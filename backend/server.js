@@ -2,6 +2,8 @@ require("dotenv").config();
 const express = require("express");
 const morgan = require("morgan");
 const db = require("./db");
+const errorMiddleware = require("./middlewares/errorHandlerMiddleware");
+const { errorHandler } = require("./utils/error-handler");
 
 const app = express();
 
@@ -10,15 +12,32 @@ app.use(express.urlencoded({ extended: true }));
 
 app.use(morgan("dev"));
 
-app.get("/", async (req, res) => {
+app.get("/", async (req, res, next) => {
   try {
     const result = await db.query("SELECT * FROM users");
     res.json(result);
     console.log(result);
-  } catch (err) {
-    console.error(err);
-    res.status(500).send("Internal Server Error");
+  } catch (error) {
+    next(error);
   }
+});
+
+app.use(errorMiddleware);
+
+process.on("uncaughtException", (error) => {
+  try {
+    errorHandler.handleError(error);
+  } catch (e) {
+    console.error("Failed to handle error", e);
+  } finally {
+    if (!errorHandler.isTrustedError(error)) {
+      process.exit(1);
+    }
+  }
+});
+
+process.on("unhandledRejection", (reason, promise) => {
+  throw reason;
 });
 
 app.listen(3000, () => {
