@@ -1,26 +1,35 @@
 require("dotenv").config();
 const express = require("express");
 const morgan = require("morgan");
+const cors = require("cors");
 const db = require("./db");
 const errorMiddleware = require("./middlewares/errorHandlerMiddleware");
 const { errorHandler } = require("./utils/error-handler");
+
+const googleRouter = require("./routes/google");
+const oauthRouter = require("./routes/oauth");
 
 const app = express();
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+app.use(cors());
+
 app.use(morgan("dev"));
 
-app.get("/", async (req, res, next) => {
-  try {
-    const result = await db.query("SELECT * FROM users");
-    res.json(result);
-    console.log(result);
-  } catch (error) {
-    next(error);
-  }
-});
+// app.get("/", async (req, res, next) => {
+//   try {
+//     const result = await db.query("SELECT * FROM users");
+//     res.json(result);
+//     console.log(result);
+//   } catch (error) {
+//     next(error);
+//   }
+// });
+
+app.use("/auth/google/callback", googleRouter);
+app.use("/auth/google/callback", oauthRouter);
 
 app.use(errorMiddleware);
 
