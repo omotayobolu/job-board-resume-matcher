@@ -41,10 +41,12 @@ router.get("/", async function (req, res, next) {
 
     if (checkEmail.rows.length === 0) {
       await pool.query(
-        "INSERT INTO users (email, created_at) VALUES ($1, NOW())",
-        [data.email]
+        "INSERT INTO users (email, full_name, created_at) VALUES ($1, $2, NOW())",
+        [data.email, data.name]
       );
-      console.log(`New user created with email: ${data.email}`);
+      console.log(
+        `New user created with email: ${data.email}, name: ${data.name}`
+      );
     } else {
       console.log(`User with email ${data.email} already exists`);
     }
