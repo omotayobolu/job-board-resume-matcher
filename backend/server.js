@@ -8,6 +8,7 @@ const { errorHandler } = require("./utils/error-handler");
 
 const googleRouter = require("./routes/google");
 const oauthRouter = require("./routes/oauth");
+const router = require("./routes/routes");
 
 const app = express();
 
@@ -18,6 +19,7 @@ app.use(cors());
 
 app.use(morgan("dev"));
 
+app.use(router);
 // app.get("/", async (req, res, next) => {
 //   try {
 //     const result = await db.query("SELECT * FROM users");
