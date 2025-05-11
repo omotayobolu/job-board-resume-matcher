@@ -37,7 +37,7 @@ class APIError extends CustomError {
 
 class ErrorHandler {
   handleError(err) {
-    logger.error("Error message: ", err);
+    logger.error(err.message, { stack: err.stack });
   }
 
   isTrustedError(error) {
