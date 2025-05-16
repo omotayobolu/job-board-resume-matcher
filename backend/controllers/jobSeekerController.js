@@ -3,16 +3,45 @@ const pool = require("../db");
 const path = require("path");
 const { cloudinary } = require("../config/cloudinary");
 const streamifier = require("streamifier");
+const extractText = require("../utils/extractResumeText");
+const parseResumeText = require("../utils/parseResume");
+const embedResume = require("../utils/embedResume");
+const index = require("../config/pinecone");
 
 const createProfile = async (req, res, next) => {
   const { user_id, job_title, location, remote_preference } = req.body;
   try {
+    const resumeText = await extractText(req.file.buffer, req.file.mimetype);
+    const parsedResume = await parseResumeText(resumeText);
+    const embedding = await embedResume(parsedResume);
+
+    const vector = {
+      id: user_id,
+      values: Array.from(embedding),
+      metadata: {
+        type: "resume",
+        name: parsedResume.name || "unknown",
+        experience_years: parsedResume.years_of_experience || "",
+        skills: parsedResume.skills || "",
+        education: parsedResume.education || "",
+        certifications: parsedResume.certifications || "",
+        work_experience_titles: Array.isArray(parsedResume.work_experience)
+          ? parsedResume.work_experience.map((exp) => {
+              const title = exp.title || "";
+              const company = exp.company || "";
+              return `${title} at ${company}`;
+            })
+          : [],
+      },
+    };
+
+    await index.upsert([vector]);
+
     const streamUpload = (buffer, originalname) => {
       return new Promise((resolve, reject) => {
         const ext = originalname.split(".").pop();
         const baseName = originalname.replace(/\.[^/.]+$/, "");
         const publicId = `resumes/${baseName}_${Date.now()}.${ext}`;
-
         const stream = cloudinary.uploader.upload_stream(
           {
             resource_type: "raw",
@@ -26,14 +55,11 @@ const createProfile = async (req, res, next) => {
             else reject(error);
           }
         );
-
         streamifier.createReadStream(buffer).pipe(stream);
       });
     };
 
     const resume = await streamUpload(req.file.buffer, req.file.originalname);
-
-    console.log(resume);
 
     if (!user_id || !job_title || !location || !remote_preference || !resume) {
       throw new CustomError(
