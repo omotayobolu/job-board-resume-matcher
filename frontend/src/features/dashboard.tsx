@@ -82,7 +82,7 @@ const Dashboard = () => {
           <label>Resume (PDF or DOC)</label>
           <input
             type="file"
-            accept=".pdf,.doc,.docx"
+            accept=".pdf,.docx"
             {...register("resume", { required: "Resume is required" })}
             className="w-full"
           />
