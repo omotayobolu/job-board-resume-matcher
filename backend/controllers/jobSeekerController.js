@@ -5,7 +5,7 @@ const { cloudinary } = require("../config/cloudinary");
 const streamifier = require("streamifier");
 const extractText = require("../utils/extractResumeText");
 const parseResumeText = require("../utils/parseResume");
-const embedResume = require("../utils/embedResume");
+const embedResume = require("../utils/embed");
 const index = require("../config/pinecone");
 
 const createProfile = async (req, res, next) => {
