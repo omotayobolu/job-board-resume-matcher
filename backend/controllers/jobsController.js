@@ -1,5 +1,8 @@
 const { HttpStatusCode, CustomError } = require("../utils/error-handler");
 const pool = require("../db");
+const { parseJobDescription } = require("../utils/parseResume");
+const { embedJob } = require("../utils/embed");
+const index = require("../config/pinecone");
 
 const createJob = async (req, res, next) => {
   const { recruiter_id, job_details } = req.body;
@@ -11,6 +14,15 @@ const createJob = async (req, res, next) => {
         "Recruiter id and job details are required."
       );
     }
+
+    const job_responsibilities = await parseJobDescription(
+      job_details.job_description
+    );
+    const complete_job_details = {
+      ...job_details,
+      responsibilities: job_responsibilities.responsibilities,
+    };
+    const embedding = await embedJob(complete_job_details);
 
     const isRecruiter = await pool.query(
       "SELECT id, role FROM users WHERE id = $1",
@@ -35,8 +47,8 @@ const createJob = async (req, res, next) => {
       );
     }
 
-    await pool.query(
-      "INSERT INTO jobs (recruiter_id, job_title, job_description, location, required_skills, job_status, work_type, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW()) RETURNING *",
+    const result = await pool.query(
+      "INSERT INTO jobs (recruiter_id, job_title, job_description, location, required_skills, job_status, work_type, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW()) RETURNING id",
       [
         recruiter_id,
         job_details.job_title,
@@ -47,6 +59,28 @@ const createJob = async (req, res, next) => {
         job_details.work_type,
       ]
     );
+
+    const job_id = result.rows[0].id.toString();
+
+    const jobVector = {
+      id: job_id,
+      values: Array.from(embedding),
+      metadata: {
+        type: "job",
+        title: complete_job_details.job_title || "unknown",
+        location: complete_job_details.location || "",
+        work_type: complete_job_details.work_type || "",
+        status: complete_job_details.job_status || "",
+        required_skills: Array.isArray(complete_job_details.required_skills)
+          ? complete_job_details.required_skills.join(", ")
+          : complete_job_details.required_skills || "",
+        responsibilities: Array.isArray(complete_job_details.responsibilities)
+          ? complete_job_details.responsibilities
+          : [],
+      },
+    };
+
+    await index.upsert([jobVector]);
 
     res
       .status(HttpStatusCode.CREATED)
