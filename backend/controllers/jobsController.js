@@ -80,7 +80,7 @@ const createJob = async (req, res, next) => {
       },
     };
 
-    await index.upsert([jobVector]);
+    await index.namespace("job").upsert([jobVector]);
 
     res
       .status(HttpStatusCode.CREATED)

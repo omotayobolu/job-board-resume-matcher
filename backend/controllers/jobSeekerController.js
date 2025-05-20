@@ -4,8 +4,8 @@ const path = require("path");
 const { cloudinary } = require("../config/cloudinary");
 const streamifier = require("streamifier");
 const extractText = require("../utils/extractResumeText");
-const parseResumeText = require("../utils/parseResume");
-const embedResume = require("../utils/embed");
+const { parseResumeText } = require("../utils/parseResume");
+const { embedResume } = require("../utils/embed");
 const index = require("../config/pinecone");
 
 const createProfile = async (req, res, next) => {
@@ -35,7 +35,7 @@ const createProfile = async (req, res, next) => {
       },
     };
 
-    await index.upsert([vector]);
+    await index.namespace("job_seeker").upsert([vector]);
 
     const streamUpload = (buffer, originalname) => {
       return new Promise((resolve, reject) => {
@@ -102,7 +102,7 @@ const createProfile = async (req, res, next) => {
     const jobSeeker = result.rows[0];
 
     res
-      .status(HttpStatusCode.OK)
+      .status(HttpStatusCode.CREATED)
       .json({ jobSeeker, message: "Profile created successfully" });
   } catch (error) {
     next(error);
