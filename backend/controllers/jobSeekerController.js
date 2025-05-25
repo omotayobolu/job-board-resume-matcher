@@ -25,13 +25,14 @@ const createProfile = async (req, res, next) => {
         skills: parsedResume.skills || "",
         education: parsedResume.education || "",
         certifications: parsedResume.certifications || "",
-        work_experience_titles: Array.isArray(parsedResume.work_experience)
-          ? parsedResume.work_experience.map((exp) => {
-              const title = exp.title || "";
-              const company = exp.company || "";
-              return `${title} at ${company}`;
-            })
-          : [],
+        job_experience_details:
+          JSON.stringify(
+            parsedResume.work_experience?.map((exp) => ({
+              jobTitle: exp.title || "",
+              company: exp.company || "",
+              responsibilities: exp.responsibilities || [],
+            }))
+          ) || [],
       },
     };
 
