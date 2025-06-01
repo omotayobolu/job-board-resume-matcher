@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const dotenv = require("dotenv");
+const jwt = require("jsonwebtoken");
 dotenv.config();
 
 const { OAuth2Client } = require("google-auth-library");
@@ -50,11 +51,39 @@ router.get("/", async function (req, res, next) {
     } else {
       console.log(`User with email ${data.email} already exists`);
     }
-    res.redirect(`http://localhost:5173/dashboard?login=success`);
+
+    const userRole = await pool.query(
+      "SELECT role FROM users WHERE email = $1",
+      [data.email]
+    );
+
+    const token = jwt.sign(
+      {
+        email: data.email,
+        full_name: data.name,
+        role: userRole.rows[0] ? userRole.rows[0].role : null,
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: "30d" }
+    );
+
+    res.cookie("token", token, {
+      httpOnly: true,
+      // secure: process.env.NODE_ENV === "production",
+      sameSite: "Strict",
+      maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+    });
+
+    if (userRole.rows.length > 0 && userRole.rows[0].role) {
+      res.redirect(`${process.env.FRONTEND_URL}/dashboard`);
+    } else {
+      res.redirect(`${process.env.FRONTEND_URL}/select-role`);
+    }
   } catch (error) {
+    console.error("Error during OAuth process:", error);
     next(error);
     res.redirect(
-      `http://localhost:5173/login?error=${encodeURIComponent(
+      `${process.env.FRONTEND_URL}/login?error=${encodeURIComponent(
         "Authentication failed"
       )}`
     );
