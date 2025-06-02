@@ -4,14 +4,28 @@ import Dashboard from "./features/dashboard";
 import Redirect from "./features/redirect";
 import SelectRole from "./features/select-role";
 import ProtectedRoute from "./features/protected-route";
+import { useDispatch } from "react-redux";
+import { useEffect } from "react";
+import { fetchUser } from "./store/userSlice";
+import type { AppDispatch } from "./store/store";
+import RecruiterProfile from "./features/create-recruiters-profile";
+import JobseekerProfile from "./features/create-jobseeker-profile";
 
 function App() {
+  const dispatch: AppDispatch = useDispatch();
+
+  useEffect(() => {
+    dispatch(fetchUser());
+  }, [dispatch]);
+
   return (
     <Routes>
       <Route path="/" element={<Redirect />} />
       <Route path="login" element={<Login />} />
       <Route element={<ProtectedRoute />}>
         <Route path="select-role" element={<SelectRole />} />
+        <Route path="recruiter-profile" element={<RecruiterProfile />} />
+        <Route path="jobseeker-profile" element={<JobseekerProfile />} />
         <Route path="dashboard" element={<Dashboard />} />
       </Route>
     </Routes>
