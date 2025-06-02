@@ -1,6 +1,38 @@
 const { HttpStatusCode, CustomError } = require("../utils/error-handler");
 const pool = require("../db");
 
+const getUser = async (req, res, next) => {
+  try {
+    const email = req.user.email;
+    if (!email) {
+      throw new CustomError(
+        "BAD REQUEST",
+        HttpStatusCode.BAD_REQUEST,
+        "Email is required",
+        true
+      );
+    }
+
+    const user = await pool.query("SELECT * FROM users WHERE email = $1", [
+      email,
+    ]);
+    if (user.rows.length === 0) {
+      throw new CustomError(
+        "NOT FOUND",
+        HttpStatusCode.NOT_FOUND,
+        "User not found",
+        true
+      );
+    }
+    res.status(HttpStatusCode.OK).json({
+      message: "User retrieved successfully",
+      user: user.rows[0],
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 const updateUserRole = async (req, res, next) => {
   const { email, role } = req.body;
   const allowedRoles = ["job seeker", "recruiter"];
@@ -51,4 +83,4 @@ const updateUserRole = async (req, res, next) => {
   }
 };
 
-module.exports = { updateUserRole };
+module.exports = { getUser, updateUserRole };
