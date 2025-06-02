@@ -1,7 +1,7 @@
 const jwt = require("jsonwebtoken");
 const { CustomError, HttpStatusCode } = require("../utils/error-handler");
 
-function authenticateToken(req, next) {
+function authenticateToken(req, res, next) {
   const token = req.cookies.token;
   if (!token) {
     throw new CustomError(
@@ -25,4 +25,5 @@ function authenticateToken(req, next) {
     );
   }
 }
+
 module.exports = authenticateToken;
