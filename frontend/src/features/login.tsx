@@ -21,7 +21,7 @@ async function auth() {
 const Login = () => {
   return (
     <div className="w-full min-h-screen h-full flex flex-row">
-      <div className="bg-purple w-[40%] px-12 py-6 flex flex-col justify-between items-start">
+      <div className="bg-purple lg:w-[40%] px-12 py-6 lg:flex hidden flex-col justify-between items-start">
         <h2 className="font-medium text-[2.5rem] text-white">jb</h2>
         <div className="">
           <h1 className="text-white font-bold 2xl:text-[4rem] lg:text-5xl text-3xl leading-[80px]">
@@ -48,7 +48,7 @@ const Login = () => {
           </div>{" "}
         </div>
       </div>
-      <div className="flex justify-center items-center w-[60%]">
+      <div className="flex justify-center items-center lg:w-[60%] w-full bg-light-grey">
         <Button
           variant="primary"
           onClick={() => auth()}
