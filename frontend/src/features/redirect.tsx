@@ -8,7 +8,7 @@ const Redirect = () => {
   const [loading, setLoading] = useState(true);
   useEffect(() => {
     axios
-      .get("http://localhost:3000/api/v1/auth/check", {
+      .get(`${import.meta.env.VITE_API_URL}/auth/check`, {
         withCredentials: true,
       })
       .then((res) => {
@@ -34,7 +34,7 @@ const Redirect = () => {
   }
 
   return isAuthenticated ? (
-    <Navigate to="/dashboard" />
+    <Navigate to="/select-role" />
   ) : (
     <Navigate to="/login" />
   );

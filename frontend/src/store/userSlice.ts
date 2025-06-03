@@ -7,7 +7,7 @@ const initialState = {
 };
 
 export const fetchUser = createAsyncThunk("user/fetchUser", async () => {
-  const response = await axios.get("http://localhost:3000/api/v1/user", {
+  const response = await axios.get(`${import.meta.env.VITE_API_URL}/user`, {
     withCredentials: true,
   });
   return response.data;
