@@ -4,13 +4,13 @@ const { embedQuestion } = require("../utils/embed");
 const index = require("../config/pinecone");
 
 const createRecruiterProfile = async (req, res, next) => {
-  const { user_id, type_of_organization, location } = req.body;
+  const { user_id, company_name, type_of_organization, location } = req.body;
   try {
-    if (!user_id || !type_of_organization || !location) {
+    if (!user_id || !company_name || !type_of_organization || !location) {
       throw new CustomError(
         "BAD REQUEST",
         HttpStatusCode.BAD_REQUEST,
-        "Type of organization and location are required",
+        "Company Name, type of organization and location are required",
         true
       );
     }
@@ -41,9 +41,13 @@ const createRecruiterProfile = async (req, res, next) => {
     }
 
     const result = await pool.query(
-      "INSERT INTO recruiter (user_id, type_of_organization, location, created_at) VALUES ($1, $2, $3, NOW()) RETURNING *",
-      [user_id, type_of_organization, location]
+      "INSERT INTO recruiter (user_id, company_name, type_of_organization, location, created_at) VALUES ($1, $2, $3, $4, NOW()) RETURNING *",
+      [user_id, company_name, type_of_organization, location]
     );
+
+    await pool.query("UPDATE users SET hasProfile = true WHERE id = $1", [
+      user_id,
+    ]);
 
     console.log(result);
 
