@@ -10,6 +10,8 @@ import { fetchUser } from "./store/userSlice";
 import type { AppDispatch } from "./store/store";
 import RecruiterProfile from "./features/create-recruiters-profile";
 import JobseekerProfile from "./features/create-jobseeker-profile";
+import DashboardLayout from "./components/dashboard-layout";
+import Applicants from "./features/applicants";
 
 function App() {
   const dispatch: AppDispatch = useDispatch();
@@ -26,7 +28,10 @@ function App() {
         <Route path="select-role" element={<SelectRole />} />
         <Route path="recruiter-profile" element={<RecruiterProfile />} />
         <Route path="jobseeker-profile" element={<JobseekerProfile />} />
-        <Route path="dashboard" element={<Dashboard />} />
+        <Route path="dashboard" element={<DashboardLayout />}>
+          <Route index element={<Dashboard />} />
+          <Route path="applicants" element={<Applicants />} />
+        </Route>
       </Route>
     </Routes>
   );

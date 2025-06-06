@@ -6,11 +6,12 @@ import { useDispatch, useSelector } from "react-redux";
 import { Navigate, Outlet, useLocation } from "react-router";
 
 const ProtectedRoute = () => {
-  const dispatch = useDispatch();
   const location = useLocation();
+
+  const dispatch = useDispatch();
   const user = useSelector(selectUser);
   const [loading, setLoading] = useState(true);
-  console.log(user);
+
   useEffect(() => {
     axios
       .get(`${import.meta.env.VITE_API_URL}/auth/check`, {
@@ -39,15 +40,34 @@ const ProtectedRoute = () => {
     return <Navigate to="/login" />;
   }
 
-  if (
-    user.role === "job seeker" &&
-    location.pathname !== "/jobseeker-profile"
-  ) {
-    return <Navigate to="/jobseeker-profile" />;
+  const pathname = location.pathname;
+
+  if (pathname === "/select-role" && user.role) {
+    return <Navigate to="/dashboard" />;
   }
 
-  if (user.role === "recruiter" && location.pathname !== "/recruiter-profile") {
-    return <Navigate to="/recruiter-profile" />;
+  if (
+    ["/recruiter-profile", "/jobseeker-profile"].includes(pathname) &&
+    (!user.role || user.hasprofile)
+  ) {
+    return <Navigate to={user.hasprofile ? "/dashboard" : "/select-role"} />;
+  }
+
+  if (pathname === "/dashboard") {
+    if (!user.role) {
+      return <Navigate to="/select-role" />;
+    }
+    if (!user.hasprofile) {
+      return (
+        <Navigate
+          to={
+            user.role === "recruiter"
+              ? "/recruiter-profile"
+              : "/jobseeker-profile"
+          }
+        />
+      );
+    }
   }
 
   return <Outlet />;
