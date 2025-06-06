@@ -79,7 +79,9 @@
   --color-light-grey: var(--light-grey);
   --color-dark-grey: var(--dark-grey);
   --color-grey: var(--grey);
+  --color-red: var(--red);
   --font-sf-pro: var(--font-sf-pro);
+  --font-inter: var(--font-inter);
 }
 
 :root {
@@ -120,7 +122,9 @@
   --light-grey: rgba(245, 246, 248, 1);
   --dark-grey: rgba(33, 42, 55, 1);
   --grey: rgba(234, 234, 236, 1);
+  --red: oklch(63.7% 0.237 25.331);
   --font-sf-pro: "SF Pro Display", sans-serif;
+  --font-inter: "Inter", sans-serif;
 }
 
 .dark {
