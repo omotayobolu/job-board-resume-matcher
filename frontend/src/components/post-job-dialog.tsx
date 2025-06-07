@@ -18,28 +18,83 @@ import { Textarea } from "./ui/textarea";
 import { CloseCircle } from "iconsax-reactjs";
 import { Button } from "./ui/button";
 import { useState } from "react";
+import { Controller, useForm } from "react-hook-form";
+import { useSelector } from "react-redux";
+import { selectUser } from "@/store/userSlice";
+import axios from "axios";
 interface PostJobDialogProps {
   openDialog: boolean;
   setOpenDialog: (open: boolean) => void;
 }
 
+interface JobDetails {
+  jobTitle: string;
+  location: string;
+  workplaceType: string;
+  jobDescription: string;
+  skills: string[];
+}
+
 const PostJobDIalog = ({ openDialog, setOpenDialog }: PostJobDialogProps) => {
+  const user = useSelector(selectUser);
   const [skill, setSkill] = useState("");
   const [skills, setSkills] = useState<string[]>([]);
+
+  const {
+    register,
+    handleSubmit,
+    setValue,
+    control,
+    reset,
+    formState: { errors },
+  } = useForm<JobDetails>({
+    mode: "onTouched",
+  });
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter" && skill.trim()) {
       e.preventDefault();
       if (!skills.includes(skill.trim())) {
         setSkills((prev) => [...prev, skill.trim()]);
+        setValue("skills", [...skills, skill.trim()]);
       }
       setSkill("");
     }
   };
 
   const removeSkill = (skillToRemove: string) => {
-    setSkills((prev) => prev.filter((s) => s !== skillToRemove));
+    const updatedSkills = skills.filter((s) => s !== skillToRemove);
+    setSkills(updatedSkills);
+    setValue("skills", updatedSkills);
   };
+
+  const onsubmit = async (data: JobDetails) => {
+    try {
+      const response = await axios.post(
+        `${import.meta.env.VITE_API_URL}/jobs/create-job`,
+        {
+          recruiter_id: user.id,
+          job_details: {
+            job_title: data.jobTitle,
+            location: data.location,
+            work_type: data.workplaceType,
+            job_description: data.jobDescription,
+            required_skills: data.skills,
+          },
+        },
+        {
+          withCredentials: true,
+        }
+      );
+      console.log("Job posted successfully:", response.data);
+    } catch (error) {
+      console.error("Error posting job:", error);
+    } finally {
+      reset();
+      setOpenDialog(false);
+    }
+  };
+
   return (
     <Dialog open={openDialog} onOpenChange={setOpenDialog}>
       <DialogContent
@@ -54,7 +109,7 @@ const PostJobDIalog = ({ openDialog, setOpenDialog }: PostJobDialogProps) => {
         <DialogHeader>
           <DialogTitle>Post a New Job Opening</DialogTitle>
         </DialogHeader>
-        <div className="mt-9">
+        <form onSubmit={handleSubmit(onsubmit)} className="mt-9">
           <div className="flex flex-row justify-center items-center gap-8">
             <div className="w-[345px]">
               <label
@@ -64,11 +119,17 @@ const PostJobDIalog = ({ openDialog, setOpenDialog }: PostJobDialogProps) => {
                 Job Title
               </label>
               <Input
+                {...register("jobTitle", { required: "Job title is required" })}
                 name="jobTitle"
                 id="jobTitle"
                 placeholder="E.g. Product Designer"
-                className="mt-1.5"
+                className={`${errors.jobTitle ? "border-red" : ""} mt-1.5`}
               />
+              {errors.jobTitle && (
+                <p className="text-xs text-red mt-1">
+                  {errors.jobTitle.message}
+                </p>
+              )}
             </div>
             <div className="w-[345px]">
               <label
@@ -78,30 +139,54 @@ const PostJobDIalog = ({ openDialog, setOpenDialog }: PostJobDialogProps) => {
                 Location
               </label>
               <Input
+                {...register("location", {
+                  required: "Location is required",
+                })}
                 name="location"
                 id="location"
                 placeholder="United States"
-                className="mt-1.5"
+                className={`${errors.location ? "border-red" : ""} mt-1.5`}
               />
+              {errors.location && (
+                <p className="text-xs text-red mt-1">
+                  {errors.location.message}
+                </p>
+              )}
             </div>
           </div>
           <div className="mt-6">
             <label
               className="text-base font-semibold text-[rgba(96,96,96,1)]"
-              htmlFor="workType"
+              htmlFor="workplaceType"
             >
               Workplace Type
             </label>
-            <Select>
-              <SelectTrigger className="w-[345px] mt-1.5">
-                <SelectValue placeholder="Select a workplace type" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="onsite">Onsite</SelectItem>
-                <SelectItem value="hybrid">Hybrid</SelectItem>
-                <SelectItem value="remote">Remote</SelectItem>
-              </SelectContent>
-            </Select>
+            <Controller
+              name="workplaceType"
+              control={control}
+              rules={{ required: "Please select a workplace type." }}
+              render={({ field }) => (
+                <Select onValueChange={field.onChange} value={field.value}>
+                  <SelectTrigger
+                    className={`w-[345px] mt-1.5 ${
+                      errors.workplaceType ? "border-red" : ""
+                    } `}
+                  >
+                    <SelectValue placeholder="Select a workplace type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="onsite">Onsite</SelectItem>
+                    <SelectItem value="hybrid">Hybrid</SelectItem>
+                    <SelectItem value="remote">Remote</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
+            />
+            {errors.workplaceType && (
+              <p className="text-xs text-red mt-1">
+                {errors.workplaceType.message}
+              </p>
+            )}
           </div>
           <div className="mt-7.5">
             <label
@@ -111,9 +196,19 @@ const PostJobDIalog = ({ openDialog, setOpenDialog }: PostJobDialogProps) => {
               Job Description
             </label>
             <Textarea
-              className="mt-1.5"
+              {...register("jobDescription", {
+                required: "Job description is required",
+              })}
+              className={`${
+                errors.jobDescription ? "border-red" : "border-gray-300"
+              } mt-1.5`}
               placeholder="Write whatever details you would like to see in the perfect candidate"
             />
+            {errors.jobDescription && (
+              <p className="text-xs text-red mt-1">
+                {errors.jobDescription.message}
+              </p>
+            )}
           </div>
           <div className="mt-7.5">
             <label
@@ -130,7 +225,9 @@ const PostJobDIalog = ({ openDialog, setOpenDialog }: PostJobDialogProps) => {
                   onChange={(e) => setSkill(e.target.value)}
                   onKeyDown={handleKeyDown}
                   placeholder="Enter required skills"
-                  className="w-[345px] mt-1.5"
+                  className={`w-[345px] mt-1.5 ${
+                    errors.skills ? "border-red" : ""
+                  }`}
                 />
                 <p className="text-sm text-[rgba(96,96,96,1)] mt-1">
                   Press <strong>Enter</strong> to add a skill
@@ -156,20 +253,27 @@ const PostJobDIalog = ({ openDialog, setOpenDialog }: PostJobDialogProps) => {
                 </div>
               )}
             </div>
+            {errors.skills && (
+              <p className="text-xs text-red mt-1">{errors.skills.message}</p>
+            )}
           </div>
-        </div>
-        <DialogFooter>
-          <div className="flex flex-row items-center gap-7.5 mt-10">
-            <DialogClose asChild>
-              <Button variant="outline" className="py-4.5 px-15">
-                Cancel
+          <DialogFooter>
+            <div className="flex flex-row items-center gap-7.5 mt-10">
+              <DialogClose asChild>
+                <Button variant="outline" className="py-4.5 px-15">
+                  Cancel
+                </Button>
+              </DialogClose>
+              <Button
+                variant="primary"
+                type="submit"
+                className="py-4.5 px-15 font-semibold text-lg"
+              >
+                Post Job
               </Button>
-            </DialogClose>
-            <Button variant="primary" type="submit" className="py-4.5 px-15">
-              Post job
-            </Button>
-          </div>
-        </DialogFooter>
+            </div>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   );
