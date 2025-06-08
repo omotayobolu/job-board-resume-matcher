@@ -116,7 +116,7 @@ const RecruiterProfile = () => {
             </div>
             <div className="mt-6">
               <label
-                htmlFor="companyLocation"
+                htmlFor="organizationType"
                 className="mb-2 text-dark-grey text-lg font-medium leading-normal"
               >
                 Type of organization
