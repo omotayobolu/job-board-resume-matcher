@@ -22,6 +22,7 @@ import { Controller, useForm } from "react-hook-form";
 import { useSelector } from "react-redux";
 import { selectUser } from "@/store/userSlice";
 import axios from "axios";
+import { useQueryClient } from "@tanstack/react-query";
 interface PostJobDialogProps {
   openDialog: boolean;
   setOpenDialog: (open: boolean) => void;
@@ -39,6 +40,9 @@ const PostJobDIalog = ({ openDialog, setOpenDialog }: PostJobDialogProps) => {
   const user = useSelector(selectUser);
   const [skill, setSkill] = useState("");
   const [skills, setSkills] = useState<string[]>([]);
+  const [isPosting, setIsPosting] = useState(false);
+
+  const queryClient = useQueryClient();
 
   const {
     register,
@@ -70,6 +74,7 @@ const PostJobDIalog = ({ openDialog, setOpenDialog }: PostJobDialogProps) => {
 
   const onsubmit = async (data: JobDetails) => {
     try {
+      setIsPosting(true);
       const response = await axios.post(
         `${import.meta.env.VITE_API_URL}/jobs/create-job`,
         {
@@ -87,11 +92,14 @@ const PostJobDIalog = ({ openDialog, setOpenDialog }: PostJobDialogProps) => {
         }
       );
       console.log("Job posted successfully:", response.data);
+      queryClient.invalidateQueries({ queryKey: ["recruiterJobs", user.id] });
+      reset();
+      setSkills([]);
+      setOpenDialog(false);
+      setIsPosting(false);
     } catch (error) {
       console.error("Error posting job:", error);
-    } finally {
-      reset();
-      setOpenDialog(false);
+      setIsPosting(false);
     }
   };
 
@@ -265,11 +273,11 @@ const PostJobDIalog = ({ openDialog, setOpenDialog }: PostJobDialogProps) => {
                 </Button>
               </DialogClose>
               <Button
-                variant="primary"
+                variant={isPosting ? "ghost" : "primary"}
                 type="submit"
                 className="py-4.5 px-15 font-semibold text-lg"
               >
-                Post Job
+                {isPosting ? "Posting..." : "Post Job"}
               </Button>
             </div>
           </DialogFooter>
