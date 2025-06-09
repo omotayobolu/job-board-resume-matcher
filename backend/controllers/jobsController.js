@@ -55,7 +55,7 @@ const createJob = async (req, res, next) => {
         job_details.job_description,
         job_details.location,
         job_details.required_skills,
-        job_details.job_status,
+        "active",
         job_details.work_type,
       ]
     );
@@ -93,6 +93,52 @@ const createJob = async (req, res, next) => {
 const getJobs = async (req, res, next) => {
   try {
     const jobs = await pool.query("SELECT * FROM jobs");
+    res.status(HttpStatusCode.OK).json({ jobs: jobs.rows });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const getJobsByRecruiter = async (req, res, next) => {
+  try {
+    const { recruiterId } = req.params;
+    if (!recruiterId) {
+      throw new CustomError(
+        "BAD REQUEST",
+        HttpStatusCode.BAD_REQUEST,
+        "Recruiter ID is required in params.",
+        true
+      );
+    }
+
+    const recruiterCheck = await pool.query(
+      "SELECT id, role FROM users WHERE id = $1",
+      [recruiterId]
+    );
+
+    if (recruiterCheck.rowCount === 0) {
+      throw new CustomError(
+        "NOT FOUND",
+        HttpStatusCode.NOT_FOUND,
+        "Recruiter not found.",
+        true
+      );
+    }
+
+    if (recruiterCheck.rows[0].role !== "recruiter") {
+      throw new CustomError(
+        "FORBIDDEN",
+        HttpStatusCode.FORBIDDEN,
+        "User is not a recruiter.",
+        true
+      );
+    }
+
+    const jobs = await pool.query(
+      "SELECT * FROM jobs WHERE recruiter_id = $1 ORDER BY created_at DESC",
+      [recruiterId]
+    );
+
     res.status(HttpStatusCode.OK).json({ jobs: jobs.rows });
   } catch (error) {
     next(error);
@@ -161,4 +207,4 @@ const deleteJob = async (req, res, next) => {
   }
 };
 
-module.exports = { createJob, getJobs, getJob, deleteJob };
+module.exports = { createJob, getJobs, getJob, deleteJob, getJobsByRecruiter };
