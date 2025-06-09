@@ -1,4 +1,4 @@
-import { Danger, SmsTracking } from "iconsax-reactjs";
+import { Danger, SmsTracking, TickCircle } from "iconsax-reactjs";
 import { Button } from "./ui/button";
 import {
   Table,
@@ -10,8 +10,40 @@ import {
 } from "./ui/table";
 import { Input } from "./ui/input";
 import chatbot from "../assets/chatbot.svg";
+import { useSelector } from "react-redux";
+import { selectUser } from "@/store/userSlice";
+import { useQuery } from "@tanstack/react-query";
+import { fetchRecruiterJobs } from "@/lib/jobs-api";
+import { Badge } from "./ui/badge";
+
+const formatDate = (dateString: string): string => {
+  if (!dateString) return "";
+  const date = new Date(dateString);
+  const day = String(date.getUTCDate()).padStart(2, "0");
+  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const year = date.getUTCFullYear();
+  return `${day}/${month}/${year}`;
+};
+
+function capitalizeFirstLetter(word: string): string {
+  if (!word) return "";
+  return word.charAt(0).toUpperCase() + word.slice(1);
+}
 
 const RecruiterDashboard = () => {
+  const user = useSelector(selectUser);
+
+  const {
+    data: jobs,
+    isLoading,
+    isError,
+    error,
+  } = useQuery({
+    queryKey: ["recruiterJobs", user.id],
+    queryFn: () => fetchRecruiterJobs(user.id),
+    enabled: !!user.id,
+  });
+
   return (
     <div className="py-18 px-6">
       <div className="flex flex-row gap-6">
@@ -51,13 +83,50 @@ const RecruiterDashboard = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                <TableRow>
-                  <TableCell>Frontend Developer</TableCell>
-                  <TableCell>05/06/2025</TableCell>
-                  <TableCell>Active</TableCell>
-                  <TableCell>100</TableCell>
-                  <TableCell>80%</TableCell>
-                </TableRow>
+                {isLoading ? (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center py-4">
+                      Loading...
+                    </TableCell>
+                  </TableRow>
+                ) : isError ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={5}
+                      className="text-center text-red-500 py-4"
+                    >
+                      Error fetching jobs:{" "}
+                      {error instanceof Error
+                        ? error.message
+                        : "An unknown error occurred"}
+                    </TableCell>
+                  </TableRow>
+                ) : jobs && jobs.length > 0 ? (
+                  jobs.map((job) => (
+                    <TableRow key={job.created_at}>
+                      <TableCell>{job.job_title}</TableCell>
+                      <TableCell>{formatDate(job.created_at)}</TableCell>
+                      <TableCell>
+                        <Badge variant="active">
+                          <TickCircle
+                            variant="Bold"
+                            size="18"
+                            color="#1D4C23"
+                          />
+                          {capitalizeFirstLetter(job.job_status)}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>appl</TableCell>
+                      <TableCell>top match</TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center py-4">
+                      No jobs posted
+                    </TableCell>
+                  </TableRow>
+                )}
               </TableBody>
             </Table>
           </div>
