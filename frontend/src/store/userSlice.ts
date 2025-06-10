@@ -45,6 +45,7 @@ type UserType = {
   name: string;
   email: string;
   role?: string;
+  hasprofile: boolean;
 };
 
 type UserState = {
