@@ -8,8 +8,6 @@ import {
   TableHeader,
   TableRow,
 } from "./ui/table";
-import { Input } from "./ui/input";
-import chatbot from "../assets/chatbot.svg";
 import { useSelector } from "react-redux";
 import { selectUser } from "@/store/userSlice";
 import { useQuery } from "@tanstack/react-query";
@@ -171,7 +169,7 @@ const RecruiterDashboard = () => {
               </div>
             </div>
           </div>
-          <div className="mt-6.5 py-4 px-8 border-2 border-[rgba(229,229,229,1)] rounded-4xl bg-white">
+          {/* <div className="mt-6.5 py-4 px-8 border-2 border-[rgba(229,229,229,1)] rounded-4xl bg-white">
             <h2 className="text-black text-2xl font-semibold">AI Chatbot</h2>
             <div className="mt-6 relative">
               <Input
@@ -183,7 +181,7 @@ const RecruiterDashboard = () => {
                 <img src={chatbot} alt="" />
               </div>
             </div>
-          </div>
+          </div> */}
         </div>
       </div>
     </div>

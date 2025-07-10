@@ -18,9 +18,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Add, Send, Trash } from "iconsax-reactjs";
+import chatbot from "../assets/chatbot.svg";
 
 const Applicants = () => {
   const [selectedJob, setSelectedJob] = useState("Frontend developer");
+  const [isChatOpen, setIsChatOpen] = useState(false);
 
   const applicants = [
     {
@@ -43,7 +46,7 @@ const Applicants = () => {
     },
   ];
   return (
-    <div className="py-18 px-6 font-inter">
+    <div className="py-18 px-6 font-inter relative">
       <h2 className="font-semibold text-2xl text-black">Applicants</h2>
       <div className="mt-7 w-full flex flex-row items-start gap-7.5">
         <div className="w-[70%]">
@@ -89,8 +92,31 @@ const Applicants = () => {
             </SelectContent>
           </Select>
           <div className="flex flex-row items-center gap-2 mt-2 w-full">
-            <Button className="w-1/2">Close Applications</Button>
-            <Button className="w-1/2">Delete Job</Button>
+            <Button
+              variant="outline"
+              className="w-1/2 font-normal hover:bg-[#292D32] hover:text-white"
+            >
+              <Add
+                variant="Linear"
+                width="24px"
+                height="24px"
+                color="#292D32"
+                className="rotate-45"
+              />{" "}
+              Close Applications
+            </Button>
+            <Button
+              variant="outline"
+              className="w-1/2 font-normal border-[#610D0D hover:bg-[#610D0D] hover:text-white"
+            >
+              <Trash
+                variant="Linear"
+                width="24px"
+                height="24px"
+                color="#610D0D"
+              />
+              Delete Job
+            </Button>
           </div>
           <div className="mt-7.5 flex justify-end items-center gap-4">
             <div className="border border-[#E5E5E5] bg-white rounded-md p-3">
@@ -136,6 +162,81 @@ const Applicants = () => {
           </TableBody>
         </Table>
       </div>
+      <div
+        className="fixed bottom-6 right-6 p-2 rounded-full bg-white cursor-pointer"
+        onClick={() => setIsChatOpen(!isChatOpen)}
+      >
+        {isChatOpen ? (
+          <Add
+            variant="Linear"
+            width="48px"
+            height="48px"
+            color="#292D32"
+            className="rotate-45"
+          />
+        ) : (
+          <img src={chatbot} alt="" />
+        )}
+      </div>
+      {isChatOpen && (
+        <div className="absolute bottom-18 right-6 w-[460px] h-[400px] bg-white border border-[#E5E5E5] rounded-lg shadow-lg p-4 flex flex-col">
+          <div className="flex flex-row justify-between items-center mb-4">
+            <h4 className="text-lg font-medium text-black">Chatbot</h4>
+            <button
+              className="cursor-pointer"
+              onClick={() => setIsChatOpen(false)}
+            >
+              <Add
+                variant="Linear"
+                width="36px"
+                height="36px"
+                color="#292D32"
+                className="rotate-45"
+              />
+            </button>
+          </div>
+          <div className="flex flex-col flex-1 gap-2 overflow-y-auto w-full">
+            <div className="bg-[#F5F7FB] p-3 rounded-lg text-sm text-black">
+              Hello! How can I assist you today?
+            </div>
+            <div className="bg-[#F5F7FB] w-[100px]  py-2 px-5 rounded-r-[26px] rounded-tl-[26px] text-white relative flex flex-row items-center gap-1">
+              <div className="w-4 h-4 rounded-full bg-[#BFBDBD] animate-bounce"></div>
+              <div className="w-4 h-4 rounded-full bg-[#D1D1D1] animate-bounce delay-150"></div>
+              <div className="w-4 h-4 rounded-full bg-[#E5E5E5] animate-bounce delay-300"></div>
+            </div>
+            <div className="bg-purple flex  self-end w-[250px] py-3 px-5 rounded-l-[26px] rounded-tr-[26px] text-white">
+              You can ask about applicants, job listings, or any other queries.
+            </div>
+          </div>
+          <div className="mt-4 flex flex-row items-center gap-2">
+            <div className="relative flex-1">
+              <textarea
+                className="flex-1 w-full border border-[#E5E5E5] bg-[#F5F7FB] rounded-[22px] px-12 pt-3.5 pb-2.5 text-base outline-none resize-none leading-tight overflow-hidden placeholder:text-ellipsis placeholder:whitespace-nowrap placeholder:overflow-hidden"
+                placeholder="Ask about applicants"
+                rows={1}
+                style={{
+                  minHeight: "48px",
+                  maxHeight: "120px",
+                }}
+                onInput={(e) => {
+                  const target = e.target as HTMLTextAreaElement;
+                  target.style.height = "auto";
+                  target.style.height =
+                    Math.min(target.scrollHeight, 120) + "px";
+                }}
+              />
+              <img
+                src={chatbot}
+                alt=""
+                className="absolute top-1/2 -translate-y-1/2 left-2"
+              />
+              <button className="absolute right-4 top-1/2 -translate-y-1/2 cursor-pointer">
+                <Send variant="Bold" size={24} color="#434448" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

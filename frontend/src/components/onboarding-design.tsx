@@ -15,13 +15,13 @@ const OnboardingDesign = () => {
       <div className="flex flex-row flex-wrap items-center gap-2 whitespace-normal">
         <div className="bg-white rounded-[2.5rem] flex flex-row items-center p-2 gap-2 pl-3">
           <p className="text-xl font-medium text-black">Hiring talent?</p>
-          <div className="bg-purple rounded-[2.5rem] border border-black py-3 px-6.5">
+          <div className="bg-purple rounded-[2.5rem] border border-black py-3 px-6.5 text-white">
             Post job
           </div>
         </div>
         <div className="bg-white rounded-[2.5rem] flex flex-row items-center p-2 gap-2 pl-3">
           <p className="text-xl font-medium text-black">Looking for a job?</p>
-          <div className="bg-purple rounded-[2.5rem] border border-black py-3 px-6.5">
+          <div className="bg-purple rounded-[2.5rem] border border-black py-3 px-6.5 text-white">
             Get matched
           </div>
         </div>

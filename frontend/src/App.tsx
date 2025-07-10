@@ -12,6 +12,7 @@ import RecruiterProfile from "./features/create-recruiters-profile";
 import JobseekerProfile from "./features/create-jobseeker-profile";
 import DashboardLayout from "./components/dashboard-layout";
 import Applicants from "./features/applicants";
+import Messages from "./features/messages";
 
 function App() {
   const dispatch: AppDispatch = useDispatch();
@@ -31,6 +32,7 @@ function App() {
         <Route path="dashboard" element={<DashboardLayout />}>
           <Route index element={<Dashboard />} />
           <Route path="applicants" element={<Applicants />} />
+          <Route path="messages" element={<Messages />} />
         </Route>
       </Route>
     </Routes>

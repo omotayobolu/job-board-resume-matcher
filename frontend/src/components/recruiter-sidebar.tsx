@@ -53,7 +53,7 @@ const RecruiterSidebar = ({ dialogOpen }: DialogProps) => {
             </div>
           )}
         </NavLink>
-        <NavLink to="/messages" end>
+        <NavLink to="/dashboard/messages" end>
           {({ isActive }) => (
             <div
               className={`${
