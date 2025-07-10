@@ -6,6 +6,7 @@ dotenv.config();
 
 const { OAuth2Client } = require("google-auth-library");
 const pool = require("../db");
+const { HttpStatusCode } = require("../utils/error-handler");
 
 async function getUserData(access_token) {
   const response = await fetch(
@@ -87,6 +88,19 @@ router.get("/", async function (req, res, next) {
         "Authentication failed"
       )}`
     );
+  }
+});
+
+router.post("/logout", (req, res, next) => {
+  try {
+    res.clearCookie("token", {
+      httpOnly: true,
+      // secure: process.env.NODE_ENV === "production",
+      sameSite: "Strict",
+    });
+    res.status(HttpStatusCode.OK).json({ message: "Logged out successfully" });
+  } catch (error) {
+    next(error);
   }
 });
 
