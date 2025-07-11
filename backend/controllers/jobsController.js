@@ -5,7 +5,8 @@ const { embedJob } = require("../utils/embed");
 const index = require("../config/pinecone");
 
 const createJob = async (req, res, next) => {
-  const { recruiter_id, job_details } = req.body;
+  const { job_details } = req.body;
+  const recruiter_id = req.user.id;
   try {
     if (!recruiter_id || !job_details) {
       throw new CustomError(
@@ -176,7 +177,7 @@ const getJob = async (req, res, next) => {
 
 const deleteJob = async (req, res, next) => {
   const { id } = req.params;
-  const { recruiter_id } = req.body;
+  const recruiter_id = req.user.id;
   try {
     if (!id || !recruiter_id) {
       throw new CustomError(

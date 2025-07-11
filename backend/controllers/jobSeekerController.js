@@ -9,14 +9,23 @@ const { embedResume } = require("../utils/embed");
 const index = require("../config/pinecone");
 
 const createProfile = async (req, res, next) => {
-  const { user_id, job_title, location, remote_preference } = req.body;
+  const { job_title, location, remote_preference } = req.body;
+  const user_id = req.user.id;
   try {
+    if (!user_id) {
+      throw new CustomError(
+        "BAD REQUEST",
+        HttpStatusCode.BAD_REQUEST,
+        "User ID is required.",
+        true
+      );
+    }
     const resumeText = await extractText(req.file.buffer, req.file.mimetype);
     const parsedResume = await parseResumeText(resumeText);
     const embedding = await embedResume(parsedResume);
 
     const vector = {
-      id: user_id,
+      id: String(user_id),
       values: Array.from(embedding),
       metadata: {
         type: "resume",
@@ -99,6 +108,10 @@ const createProfile = async (req, res, next) => {
       "INSERT INTO job_seeker (user_id, job_title, location, remote_preference, resume_url, created_at) VALUES ($1, $2, $3, $4, $5, NOW()) RETURNING *",
       [user_id, job_title, location, remote_preference, resume.secure_url]
     );
+
+    await pool.query("UPDATE users SET hasprofile = true WHERE id = $1", [
+      user_id,
+    ]);
 
     const jobSeeker = result.rows[0];
 

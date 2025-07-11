@@ -4,7 +4,8 @@ const { embedQuestion } = require("../utils/embed");
 const index = require("../config/pinecone");
 
 const createRecruiterProfile = async (req, res, next) => {
-  const { user_id, company_name, type_of_organization, location } = req.body;
+  const { company_name, type_of_organization, location } = req.body;
+  const user_id = req.user.id;
   try {
     if (!user_id || !company_name || !type_of_organization || !location) {
       throw new CustomError(
@@ -45,11 +46,9 @@ const createRecruiterProfile = async (req, res, next) => {
       [user_id, company_name, type_of_organization, location]
     );
 
-    await pool.query("UPDATE users SET hasProfile = true WHERE id = $1", [
+    await pool.query("UPDATE users SET hasprofile = true WHERE id = $1", [
       user_id,
     ]);
-
-    console.log(result);
 
     const recruiter = result.rows[0];
     res
@@ -61,7 +60,8 @@ const createRecruiterProfile = async (req, res, next) => {
 };
 
 const queryApplications = async (req, res, next) => {
-  const { recruiterId, question, jobId } = req.body;
+  const { question, jobId } = req.body;
+  const recruiterId = req.user.id;
   try {
     if (!recruiterId || !question) {
       throw new CustomError(
@@ -127,8 +127,6 @@ const queryApplications = async (req, res, next) => {
     const appliedJobseekers = results.matches.filter((r) =>
       appliedIds.includes(r.id)
     );
-
-    console.log("Applied job seekers ", appliedJobseekers);
 
     const context = appliedJobseekers
       .map(

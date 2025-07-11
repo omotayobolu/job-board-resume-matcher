@@ -5,7 +5,8 @@ const cosineSimilarity = require("../utils/cosineSimilarity");
 
 const applyToJob = async (req, res, next) => {
   try {
-    const { jobSeekerId, jobId } = req.body;
+    const { jobId } = req.body;
+    const jobSeekerId = req.user.id;
     if (!jobId || !jobSeekerId) {
       return res
         .status(HttpStatusCode.BAD_REQUEST)

@@ -5,7 +5,7 @@ const jobSeekerRoute = require("./jobSeekerRoute");
 const recruiterRoute = require("./recruiterRoute");
 const jobsRoute = require("./jobsRoute");
 const applicationRoute = require("./applicationRoute");
-const authenticateToken = require("../middlewares/authMiddleware");
+const { authenticateToken } = require("../middlewares/authMiddleware");
 const authRoute = require("../routes/authRoute");
 
 router.use("/api/v1/auth", authRoute);

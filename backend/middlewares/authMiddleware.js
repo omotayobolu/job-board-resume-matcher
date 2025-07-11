@@ -26,4 +26,16 @@ function authenticateToken(req, res, next) {
   }
 }
 
-module.exports = authenticateToken;
+function isRecruiter(req, res, next) {
+  if (req.user.role !== "recruiter") {
+    throw new CustomError(
+      "FORBIDDEN",
+      HttpStatusCode.FORBIDDEN,
+      "Access denied. Only recruiters can perform this action.",
+      true
+    );
+  }
+  next();
+}
+
+module.exports = { authenticateToken, isRecruiter };
