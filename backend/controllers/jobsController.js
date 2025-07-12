@@ -92,8 +92,27 @@ const createJob = async (req, res, next) => {
 };
 
 const getJobs = async (req, res, next) => {
+  const userId = req.user.id;
   try {
-    const jobs = await pool.query("SELECT * FROM jobs");
+    const jobs = await pool.query(
+      `SELECT
+      jobs.id,
+      jobs.job_title,
+      jobs.job_description,
+      jobs.location,
+      jobs.required_skills,
+      jobs.created_at,
+      jobs.work_type,
+      jobs.job_status,
+      CASE 
+        WHEN applications.job_seeker_id = $1 THEN true
+      ELSE false
+      END AS hasApplied
+      FROM jobs
+      LEFT JOIN applications
+      ON jobs.id = applications.job_id AND applications.job_seeker_id = $1`,
+      [userId]
+    );
     res.status(HttpStatusCode.OK).json({ jobs: jobs.rows });
   } catch (error) {
     next(error);
