@@ -155,7 +155,23 @@ const getJobsByRecruiter = async (req, res, next) => {
     }
 
     const jobs = await pool.query(
-      "SELECT * FROM jobs WHERE recruiter_id = $1 ORDER BY created_at DESC",
+      `SELECT 
+      jobs.id,
+      jobs.job_title,
+      jobs.job_description,
+      jobs.location,
+      jobs.required_skills,
+      jobs.created_at,
+      jobs.work_type,
+      jobs.job_status,
+      COUNT(applications.id) AS applicants_count,
+      MAX(applications.score) AS top_match
+      FROM jobs
+      LEFT JOIN applications
+        ON jobs.id = applications.job_id
+      WHERE recruiter_id = $1 
+      GROUP BY jobs.id, jobs.job_title, jobs.job_description, jobs.location, jobs.required_skills, jobs.created_at
+      ORDER BY created_at DESC`,
       [recruiterId]
     );
 
