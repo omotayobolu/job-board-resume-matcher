@@ -5,6 +5,6 @@ const {
   getAllApplications,
 } = require("../controllers/applicationController");
 
-router.post("/apply", applyToJob).get("/get-applications", getAllApplications);
+router.post("/apply", applyToJob).get("/:jobId", getAllApplications);
 
 module.exports = router;

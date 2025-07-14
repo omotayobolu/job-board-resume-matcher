@@ -74,12 +74,33 @@ const applyToJob = async (req, res, next) => {
 
 const getAllApplications = async (req, res, next) => {
   try {
+    const { jobId } = req.params;
     if (!req.user || req.user.role !== "recruiter") {
       return res
         .status(HttpStatusCode.FORBIDDEN)
         .json({ error: "Only recruiters can view applications" });
     }
-    const applications = await pool.query("SELECT * FROM applications");
+    if (!jobId) {
+      return res.status(HttpStatusCode.BAD_REQUEST).json({
+        error: "Job ID is required to fetch applications",
+      });
+    }
+    const applications = await pool.query(
+      `SELECT 
+      a.id,
+      a.job_seeker_id,
+      a.job_id,
+      u.full_name AS job_seeker_name,
+      a.score,
+      a.status,
+      a.applied_at
+      FROM 
+      applications a
+      INNER JOIN users u ON a.job_seeker_id = u.id
+      WHERE a.job_id = $1
+      `,
+      [jobId]
+    );
     res.status(HttpStatusCode.OK).json({ applications: applications.rows });
   } catch (error) {
     next(error);
