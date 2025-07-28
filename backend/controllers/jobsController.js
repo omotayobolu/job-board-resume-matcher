@@ -210,6 +210,43 @@ const getJob = async (req, res, next) => {
   }
 };
 
+const updateJobStatus = async (req, res, next) => {
+  const { id } = req.params;
+  const { job_status } = req.body;
+
+  try {
+    if (!id || !job_status) {
+      return res.status(HttpStatusCode.BAD_REQUEST).json({
+        error: "Job ID and status are required to update job status.",
+      });
+    }
+
+    const recruiter_id = req.user.id;
+    const existingJob = await pool.query(
+      "SELECT * FROM jobs WHERE id = $1 AND recruiter_id = $2",
+      [id, recruiter_id]
+    );
+
+    if (existingJob.rowCount === 0) {
+      return res.status(HttpStatusCode.NOT_FOUND).json({
+        error: "Job not found.",
+      });
+    }
+
+    const result = await pool.query(
+      "UPDATE jobs SET job_status = $1 WHERE id = $2 RETURNING *",
+      [job_status, id]
+    );
+
+    res.status(HttpStatusCode.OK).json({
+      message: "Job status updated successfully.",
+      job: result.rows[0],
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 const deleteJob = async (req, res, next) => {
   const { id } = req.params;
   const recruiter_id = req.user.id;
@@ -243,4 +280,11 @@ const deleteJob = async (req, res, next) => {
   }
 };
 
-module.exports = { createJob, getJobs, getJob, deleteJob, getJobsByRecruiter };
+module.exports = {
+  createJob,
+  getJobs,
+  getJob,
+  deleteJob,
+  getJobsByRecruiter,
+  updateJobStatus,
+};
