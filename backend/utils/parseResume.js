@@ -61,11 +61,14 @@ ${resumeText}
 };
 
 const parseJobDescription = async (job_description) => {
-  const prompt = `Extract the responsibilities (in an array) from this job description.
+  const prompt = `Extract the following from this job description:
+  1. Responsibilities (as an array)
+  2. Summary (a brief 5 sentence summary of the job)
   
   Respond in this JSON format:
   {
-    "responsibilities": []
+    "responsibilities": [],
+    "summary": ""
   }
 
     Job Description:

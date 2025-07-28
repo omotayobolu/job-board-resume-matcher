@@ -16,12 +16,10 @@ const createJob = async (req, res, next) => {
       );
     }
 
-    const job_responsibilities = await parseJobDescription(
-      job_details.job_description
-    );
+    const jobDetails = await parseJobDescription(job_details.job_description);
     const complete_job_details = {
       ...job_details,
-      responsibilities: job_responsibilities.responsibilities,
+      responsibilities: jobDetails.responsibilities,
     };
     const embedding = await embedJob(complete_job_details);
 
@@ -99,6 +97,7 @@ const getJobs = async (req, res, next) => {
       jobs.id,
       jobs.job_title,
       jobs.job_description,
+      jobs.summary,
       jobs.location,
       jobs.required_skills,
       jobs.created_at,
@@ -159,6 +158,7 @@ const getJobsByRecruiter = async (req, res, next) => {
       jobs.id,
       jobs.job_title,
       jobs.job_description,
+      jobs.summary,
       jobs.location,
       jobs.required_skills,
       jobs.created_at,
