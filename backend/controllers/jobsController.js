@@ -16,36 +16,6 @@ const createJob = async (req, res, next) => {
       );
     }
 
-    const jobDetails = await parseJobDescription(job_details.job_description);
-    const complete_job_details = {
-      ...job_details,
-      responsibilities: jobDetails.responsibilities,
-    };
-    const embedding = await embedJob(complete_job_details);
-
-    const isRecruiter = await pool.query(
-      "SELECT id, role FROM users WHERE id = $1",
-      [recruiter_id]
-    );
-
-    if (isRecruiter.rowCount === 0) {
-      throw new CustomError(
-        "NOT FOUND",
-        HttpStatusCode.NOT_FOUND,
-        "Recruiter not found",
-        true
-      );
-    }
-
-    if (isRecruiter.rows[0].role !== "recruiter") {
-      throw new CustomError(
-        "UNAUTHORIZED",
-        HttpStatusCode.UNAUTHORIZED,
-        "Only recruiters can create jobs",
-        true
-      );
-    }
-
     const result = await pool.query(
       "INSERT INTO jobs (recruiter_id, job_title, job_description, location, required_skills, job_status, work_type, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW()) RETURNING id",
       [
@@ -60,6 +30,25 @@ const createJob = async (req, res, next) => {
     );
 
     const job_id = result.rows[0].id.toString();
+
+    res
+      .status(HttpStatusCode.CREATED)
+      .json({ message: "Job created successfully." });
+
+    processEmbeddings(job_id, job_details);
+  } catch (error) {
+    next(error);
+  }
+};
+
+async function processEmbeddings(job_id, job_details) {
+  try {
+    const jobDetails = await parseJobDescription(job_details.job_description);
+    const complete_job_details = {
+      ...job_details,
+      responsibilities: jobDetails.responsibilities,
+    };
+    const embedding = await embedJob(complete_job_details);
 
     const jobVector = {
       id: job_id,
@@ -80,14 +69,11 @@ const createJob = async (req, res, next) => {
     };
 
     await index.namespace("job").upsert([jobVector]);
-
-    res
-      .status(HttpStatusCode.CREATED)
-      .json({ message: "Job created successfully." });
   } catch (error) {
+    console.error("Error processing embeddings:", error);
     next(error);
   }
-};
+}
 
 const getJobs = async (req, res, next) => {
   const userId = req.user.id;
