@@ -13,6 +13,7 @@ import { selectUser } from "@/store/userSlice";
 import { useQuery } from "@tanstack/react-query";
 import { fetchRecruiterJobs } from "@/lib/jobs-api";
 import { Badge } from "./ui/badge";
+import { useNavigate } from "react-router";
 
 const formatDate = (dateString: string): string => {
   if (!dateString) return "";
@@ -30,6 +31,7 @@ function capitalizeFirstLetter(word: string): string {
 
 const RecruiterDashboard = () => {
   const user = useSelector(selectUser);
+  const navigate = useNavigate();
 
   const {
     data: jobs,
@@ -41,6 +43,10 @@ const RecruiterDashboard = () => {
     queryFn: () => fetchRecruiterJobs(user.id),
     enabled: !!user.id,
   });
+
+  const handleRowClick = (jobId: string) => {
+    navigate(`/dashboard/applicants/${jobId}`);
+  };
 
   return (
     <div className="py-18 px-6">
@@ -101,7 +107,13 @@ const RecruiterDashboard = () => {
                   </TableRow>
                 ) : jobs && jobs.length > 0 ? (
                   jobs.map((job) => (
-                    <TableRow key={job.created_at}>
+                    <TableRow
+                      key={job.created_at}
+                      onClick={() => {
+                        handleRowClick(job.id);
+                      }}
+                      className="cursor-pointer"
+                    >
                       <TableCell>{job.job_title}</TableCell>
                       <TableCell>{formatDate(job.created_at)}</TableCell>
                       <TableCell>
@@ -114,8 +126,10 @@ const RecruiterDashboard = () => {
                           {capitalizeFirstLetter(job.job_status)}
                         </Badge>
                       </TableCell>
-                      <TableCell>appl</TableCell>
-                      <TableCell>top match</TableCell>
+                      <TableCell>{job.applicants_count}</TableCell>
+                      <TableCell>
+                        {job.top_match ? (job.top_match * 100).toFixed(2) : 0}
+                      </TableCell>
                     </TableRow>
                   ))
                 ) : (

@@ -1,14 +1,27 @@
 import { NavLink } from "react-router";
 import { Element4, LogoutCurve, Profile2User, Sms } from "iconsax-reactjs";
 import { Button } from "./ui/button";
+import { useSelector } from "react-redux";
+import { selectUser } from "@/store/userSlice";
+import { useQuery } from "@tanstack/react-query";
+import { fetchRecruiterJobs } from "@/lib/jobs-api";
 
 type DialogProps = {
   dialogOpen: () => void;
 };
 
 const RecruiterSidebar = ({ dialogOpen }: DialogProps) => {
+  const user = useSelector(selectUser);
+  const { data: jobs } = useQuery({
+    queryKey: ["recruiterJobs", user.id],
+    queryFn: () => fetchRecruiterJobs(user.id),
+    enabled: !!user.id,
+  });
+
+  const firstJobId = jobs && jobs.length > 0 ? jobs[0].id : "";
+
   return (
-    <div className="w-[15%] border-r-2 border-[#E5E5E5] bg-white pl-6 flex flex-col justify-between z-50">
+    <div className="w-[15%] h-screen overflow-hidden fixed top-0 left-0 border-r-2 border-[#E5E5E5] bg-white pl-6 flex flex-col justify-between z-50">
       <nav className="mt-18">
         <NavLink to="/dashboard" end>
           {({ isActive }) => (
@@ -31,7 +44,7 @@ const RecruiterSidebar = ({ dialogOpen }: DialogProps) => {
             </div>
           )}
         </NavLink>
-        <NavLink to="/dashboard/applicants" end>
+        <NavLink to={`/dashboard/applicants/${firstJobId}`} end>
           {({ isActive }) => (
             <div
               className={`${
