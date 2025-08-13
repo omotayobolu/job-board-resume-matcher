@@ -6,7 +6,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import SearchIcon from "../assets/search.svg";
 import ExportIcon from "../assets/export.svg";
 import {
@@ -17,7 +17,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Add, Send } from "iconsax-reactjs";
 import chatbot from "../assets/chatbot.svg";
 import {
@@ -54,12 +53,31 @@ const formatDate = (dateStr: string): string => {
   return `${day}/${month}/${year}`;
 };
 
+type ChatMessage = {
+  id: number;
+  type: "user" | "bot";
+  message: string;
+  timestamp: Date;
+};
+
 const JobApplicants = () => {
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [isToggling, setIsToggling] = useState(false);
   const [query, setQuery] = useState("");
   const [isQueryLoading, setIsQueryLoading] = useState(false);
+  const [isTyping, setIsTyping] = useState(false);
+  const [typingMessage, setTypingMessage] = useState("");
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
+    {
+      id: 1,
+      type: "bot",
+      message:
+        "Hello! I can help you analyze applicants for this job. Ask me anything about their qualifications, match scores, or application status.",
+      timestamp: new Date(),
+    },
+  ]);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
   const user = useSelector(selectUser);
   const params = useParams();
   const jobId = params.jobId;
@@ -74,6 +92,33 @@ const JobApplicants = () => {
       setSelectedJob(jobId);
     }
   }, [jobId]);
+
+  // Auto-scroll chat to bottom when new messages are added
+  useEffect(() => {
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTop =
+        chatContainerRef.current.scrollHeight;
+    }
+  }, [chatMessages, isQueryLoading, isTyping, typingMessage]);
+
+  // Typing animation function
+  const typeMessage = (message: string, callback: () => void) => {
+    setIsTyping(true);
+    setTypingMessage("");
+    let i = 0;
+
+    const typeInterval = setInterval(() => {
+      if (i < message.length) {
+        setTypingMessage(message.slice(0, i + 1));
+        i++;
+      } else {
+        clearInterval(typeInterval);
+        setIsTyping(false);
+        setTypingMessage("");
+        callback();
+      }
+    }, 30); // Adjust speed here (30ms per character)
+  };
 
   const { data: applicants, isLoading } = useQuery({
     queryKey: ["applicants", selectedJob],
@@ -149,8 +194,21 @@ const JobApplicants = () => {
   };
 
   const handleQueryApplications = async (question: string) => {
+    if (!question.trim()) return;
+
     try {
+      // Add user message to chat
+      const userMessage = {
+        id: Date.now(),
+        type: "user" as const,
+        message: question,
+        timestamp: new Date(),
+      };
+      setChatMessages((prev) => [...prev, userMessage]);
+
       setIsQueryLoading(true);
+      setQuery(""); // Clear input immediately
+
       const response = await axios.post(
         `${
           import.meta.env.VITE_API_URL
@@ -160,14 +218,42 @@ const JobApplicants = () => {
         },
         { withCredentials: true }
       );
-      alert(response.data.answer);
 
-      setQuery("");
       setIsQueryLoading(false);
+
+      // Use typing animation for bot response
+      const botResponseText =
+        response.data.answer || "I couldn't find an answer to your question.";
+
+      typeMessage(botResponseText, () => {
+        // Add the complete bot message to chat after typing animation
+        const botMessage = {
+          id: Date.now() + 1,
+          type: "bot" as const,
+          message: botResponseText,
+          timestamp: new Date(),
+        };
+        setChatMessages((prev) => [...prev, botMessage]);
+      });
     } catch (error) {
       console.error("Error querying applications:", error);
-      toast.error("Failed to query applications.");
       setIsQueryLoading(false);
+
+      // Use typing animation for error message too
+      const errorText =
+        "Sorry, I encountered an error while processing your request. Please try again.";
+
+      typeMessage(errorText, () => {
+        const errorMessage = {
+          id: Date.now() + 1,
+          type: "bot" as const,
+          message: errorText,
+          timestamp: new Date(),
+        };
+        setChatMessages((prev) => [...prev, errorMessage]);
+      });
+
+      toast.error("Failed to query applications.");
     }
   };
 
@@ -297,9 +383,7 @@ const JobApplicants = () => {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>
-                <Checkbox />
-              </TableHead>
+              <TableHead className="w-16">#</TableHead>
               <TableHead>Applicant's Name</TableHead>
               <TableHead>Match Score (%)</TableHead>
               <TableHead>Status</TableHead>
@@ -326,10 +410,14 @@ const JobApplicants = () => {
             ) : (
               filteredApplicants?.map((applicant, index) => (
                 <TableRow key={index}>
-                  <TableCell>
-                    <Checkbox />
+                  <TableCell className="font-medium text-gray-500">
+                    {index + 1}
                   </TableCell>
-                  <TableCell>{applicant.job_seeker_name}</TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-3">
+                      <span>{applicant.job_seeker_name}</span>
+                    </div>
+                  </TableCell>
                   <TableCell>{(applicant.score * 100).toFixed(2)}</TableCell>
                   <TableCell>
                     {(() => {
@@ -392,20 +480,45 @@ const JobApplicants = () => {
               />
             </button>
           </div>
-          <div className="flex flex-col flex-1 gap-4 overflow-y-auto w-full">
-            <div className="bg-[#F5F7FB] p-3 rounded-lg text-sm text-black w-[250px]">
-              Hello! How can I assist you today?
-            </div>
-            {isQueryLoading && (
-              <div className="bg-[#F5F7FB] w-[100px]  py-2 px-5 rounded-r-[26px] rounded-tl-[26px] text-white relative flex flex-row items-center gap-1">
-                <div className="w-4 h-4 rounded-full bg-[#BFBDBD] animate-bounce"></div>
-                <div className="w-4 h-4 rounded-full bg-[#D1D1D1] animate-bounce delay-150"></div>
-                <div className="w-4 h-4 rounded-full bg-[#E5E5E5] animate-bounce delay-300"></div>
+          <div
+            ref={chatContainerRef}
+            className="flex flex-col flex-1 gap-3 overflow-y-auto w-full p-2 scroll-smooth"
+          >
+            {chatMessages.map((message) => (
+              <div
+                key={message.id}
+                className={`flex ${
+                  message.type === "user" ? "justify-end" : "justify-start"
+                }`}
+              >
+                <div
+                  className={`max-w-[250px] p-3 rounded-lg text-sm ${
+                    message.type === "user"
+                      ? "bg-[#6E62E5] text-white rounded-br-md"
+                      : "bg-[#F5F7FB] text-black rounded-bl-md"
+                  }`}
+                >
+                  {message.message}
+                </div>
+              </div>
+            ))}
+            {isTyping && (
+              <div className="flex justify-start">
+                <div className="bg-[#F5F7FB] max-w-[250px] p-3 rounded-lg rounded-bl-md text-black text-sm">
+                  {typingMessage}
+                  <span className="animate-pulse">|</span>
+                </div>
               </div>
             )}
-            <div className="bg-purple flex  self-end w-[250px] py-3 px-5 rounded-l-[26px] rounded-tr-[26px] text-white">
-              You can ask about applicants, job listings, or any other queries.
-            </div>
+            {isQueryLoading && (
+              <div className="flex justify-start">
+                <div className="bg-[#F5F7FB] max-w-[100px] py-2 px-4 rounded-lg rounded-bl-md relative flex flex-row items-center gap-1">
+                  <div className="w-2 h-2 rounded-full bg-[#BFBDBD] animate-bounce"></div>
+                  <div className="w-2 h-2 rounded-full bg-[#D1D1D1] animate-bounce delay-150"></div>
+                  <div className="w-2 h-2 rounded-full bg-[#E5E5E5] animate-bounce delay-300"></div>
+                </div>
+              </div>
+            )}
           </div>
           <div className="mt-4 flex flex-row items-center gap-2">
             <div className="relative flex-1">
@@ -422,15 +535,9 @@ const JobApplicants = () => {
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
-                    const value = (
-                      e.target as HTMLTextAreaElement
-                    ).value.trim();
-                    if (value) {
+                    const value = query.trim();
+                    if (value && !isQueryLoading && !isTyping) {
                       handleQueryApplications(value);
-
-                      (e.target as HTMLTextAreaElement).value = "";
-
-                      (e.target as HTMLTextAreaElement).style.height = "48px";
                     }
                   }
                 }}
@@ -440,6 +547,7 @@ const JobApplicants = () => {
                   target.style.height =
                     Math.min(target.scrollHeight, 120) + "px";
                 }}
+                disabled={isQueryLoading || isTyping}
               />
               <img
                 src={chatbot}
@@ -447,13 +555,18 @@ const JobApplicants = () => {
                 className="absolute top-1/2 -translate-y-1/2 left-2"
               />
               <button
-                onClick={() => handleQueryApplications(query)}
-                disabled={isQueryLoading || !query.trim()}
-                className={`absolute right-4 top-1/2 -translate-y-1/2  ${
-                  isQueryLoading || !query.trim()
+                onClick={() => {
+                  const value = query.trim();
+                  if (value && !isQueryLoading && !isTyping) {
+                    handleQueryApplications(value);
+                  }
+                }}
+                disabled={isQueryLoading || !query.trim() || isTyping}
+                className={`absolute right-4 top-1/2 -translate-y-1/2 ${
+                  isQueryLoading || !query.trim() || isTyping
                     ? "opacity-50 cursor-not-allowed"
-                    : "cursor-pointer"
-                }`}
+                    : "cursor-pointer hover:opacity-80"
+                } transition-opacity`}
               >
                 <Send variant="Bold" size={24} color="#434448" />
               </button>
