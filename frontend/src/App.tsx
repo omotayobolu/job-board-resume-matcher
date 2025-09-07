@@ -32,7 +32,7 @@ function App() {
         <Route path="dashboard" element={<DashboardLayout />}>
           <Route index element={<Dashboard />} />
           <Route path="applicants/:jobId" element={<JobApplicants />} />
-          <Route path="messages" element={<Messages />} />
+          <Route path="messages/:userId" element={<Messages />} />
         </Route>
       </Route>
     </Routes>
