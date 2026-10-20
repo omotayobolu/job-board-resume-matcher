@@ -1,27 +1,23 @@
 import Loading from "@/components/loading";
-import axios from "axios";
+import Landing from "@/features/landing";
+import { getHomePath } from "@/lib/auth";
+import { axiosInstance } from "@/lib/axios-instance";
+import type { UserType } from "@/store/userSlice";
 import { useEffect, useState } from "react";
 import { Navigate } from "react-router";
 
 const Redirect = () => {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [destination, setDestination] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   useEffect(() => {
-    axios
-      .get(`${import.meta.env.VITE_API_URL}/auth/check`, {
-        withCredentials: true,
-      })
+    axiosInstance
+      .get<{ user: UserType }>("/auth/me")
       .then((res) => {
-        if (res.status === 200) {
-          setIsAuthenticated(true);
-        } else {
-          setIsAuthenticated(false);
-        }
+        setDestination(getHomePath(res.data.user));
         setLoading(false);
       })
       .catch((error) => {
         console.error("Error during authentication check:", error);
-        setIsAuthenticated(false);
         setLoading(false);
       });
   }, []);
@@ -29,15 +25,11 @@ const Redirect = () => {
     return <Loading />;
   }
 
-  if (!isAuthenticated) {
-    return <Navigate to="/login" />;
+  if (!destination) {
+    return <Landing />;
   }
 
-  return isAuthenticated ? (
-    <Navigate to="/select-role" />
-  ) : (
-    <Navigate to="/login" />
-  );
+  return <Navigate to={destination} replace />;
 };
 
 export default Redirect;

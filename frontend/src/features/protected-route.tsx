@@ -1,73 +1,54 @@
 import Loading from "@/components/loading";
+import { getHomePath } from "@/lib/auth";
+import { axiosInstance } from "@/lib/axios-instance";
 import { clearUser, selectUser, setUser } from "@/store/userSlice";
-import axios from "axios";
 import { useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { Navigate, Outlet, useLocation } from "react-router";
 
+const PROFILE_PATHS = ["/recruiter-profile", "/jobseeker-profile"];
+
 const ProtectedRoute = () => {
-  const location = useLocation();
+  const { pathname } = useLocation();
 
   const dispatch = useDispatch();
   const user = useSelector(selectUser);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    axios
-      .get(`${import.meta.env.VITE_API_URL}/auth/check`, {
-        withCredentials: true,
-      })
+    axiosInstance
+      .get("/auth/me")
       .then((res) => {
-        if (res.status === 200) {
-          dispatch(setUser(res.data.user));
-        } else {
-          dispatch(clearUser());
-        }
-        setLoading(false);
+        dispatch(setUser(res.data.user));
       })
       .catch((error) => {
         console.error("Error during authentication check:", error);
         dispatch(clearUser());
-        setLoading(false);
-      });
+      })
+      .finally(() => setLoading(false));
   }, [dispatch]);
 
   if (loading) {
     return <Loading />;
   }
 
-  if (!user) {
+  if (!user?.id) {
     return <Navigate to="/login" />;
   }
 
-  const pathname = location.pathname;
+  // Onboarding: no role -> login, role without a profile -> that profile form,
+  // otherwise the dashboard. Each of those pages is only reachable in its own state.
+  const home = getHomePath(user);
+  const isDashboard =
+    pathname === "/dashboard" || pathname.startsWith("/dashboard/");
+  const requiredHome = isDashboard
+    ? "/dashboard"
+    : PROFILE_PATHS.includes(pathname)
+      ? pathname
+      : null;
 
-  if (pathname === "/select-role" && user.role) {
-    return <Navigate to="/dashboard" />;
-  }
-
-  if (
-    ["/recruiter-profile", "/jobseeker-profile"].includes(pathname) &&
-    (!user.role || user.hasprofile)
-  ) {
-    return <Navigate to={user.hasprofile ? "/dashboard" : "/select-role"} />;
-  }
-
-  if (pathname === "/dashboard") {
-    if (!user.role) {
-      return <Navigate to="/select-role" />;
-    }
-    if (!user.hasprofile) {
-      return (
-        <Navigate
-          to={
-            user.role === "recruiter"
-              ? "/recruiter-profile"
-              : "/jobseeker-profile"
-          }
-        />
-      );
-    }
+  if (requiredHome && requiredHome !== home) {
+    return <Navigate to={home} replace />;
   }
 
   return <Outlet />;
