@@ -1,7 +1,9 @@
 import { NavLink } from "react-router";
 import { Element4, LogoutCurve, Sms } from "iconsax-reactjs";
+import { useLogout } from "@/hooks/use-logout";
 
 const JobseekerSidebar = () => {
+  const { logout, isLoggingOut } = useLogout();
   return (
     <div className="w-[15%] fixed top-0 left-0 h-screen overflow-hidden border-r-2 border-[#E5E5E5] bg-white pl-6 flex flex-col justify-between z-50">
       <nav className="mt-18">
@@ -51,14 +53,21 @@ const JobseekerSidebar = () => {
         </NavLink>
       </nav>
 
-      <button className="flex items-center gap-3 mb-11 cursor-pointer">
+      <button
+        type="button"
+        onClick={logout}
+        disabled={isLoggingOut}
+        className="flex items-center gap-3 mb-11 cursor-pointer disabled:opacity-50"
+      >
         <LogoutCurve
           color="rgba(204, 36, 36, 1)"
           size="24"
           variant="Bold"
           style={{ transform: "rotate(180deg)" }}
         />
-        <p className="text-[#CC2424] text-lg font-normal">Log Out</p>
+        <p className="text-[#CC2424] text-lg font-normal">
+          {isLoggingOut ? "Logging out..." : "Log Out"}
+        </p>
       </button>
     </div>
   );

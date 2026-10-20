@@ -5,6 +5,7 @@ import { useSelector } from "react-redux";
 import { selectUser } from "@/store/userSlice";
 import { useQuery } from "@tanstack/react-query";
 import { fetchRecruiterJobs } from "@/lib/jobs-api";
+import { useLogout } from "@/hooks/use-logout";
 
 type DialogProps = {
   dialogOpen: () => void;
@@ -12,6 +13,7 @@ type DialogProps = {
 
 const RecruiterSidebar = ({ dialogOpen }: DialogProps) => {
   const user = useSelector(selectUser);
+  const { logout, isLoggingOut } = useLogout();
   const { data: jobs } = useQuery({
     queryKey: ["recruiterJobs", user.id],
     queryFn: () => fetchRecruiterJobs(user.id),
@@ -66,7 +68,7 @@ const RecruiterSidebar = ({ dialogOpen }: DialogProps) => {
             </div>
           )}
         </NavLink>
-        <NavLink to="/dashboard/messages" end>
+        <NavLink to="/dashboard/messages">
           {({ isActive }) => (
             <div
               className={`${
@@ -99,14 +101,21 @@ const RecruiterSidebar = ({ dialogOpen }: DialogProps) => {
         </Button>
       </nav>
 
-      <button className="flex items-center gap-3 mb-11 cursor-pointer">
+      <button
+        type="button"
+        onClick={logout}
+        disabled={isLoggingOut}
+        className="flex items-center gap-3 mb-11 cursor-pointer disabled:opacity-50"
+      >
         <LogoutCurve
           color="rgba(204, 36, 36, 1)"
           size="24"
           variant="Bold"
           style={{ transform: "rotate(180deg)" }}
         />
-        <p className="text-[#CC2424] text-lg font-normal">Log Out</p>
+        <p className="text-[#CC2424] text-lg font-normal">
+          {isLoggingOut ? "Logging out..." : "Log Out"}
+        </p>
       </button>
     </div>
   );
