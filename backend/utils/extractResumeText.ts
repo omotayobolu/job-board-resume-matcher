@@ -1,7 +1,7 @@
-const mammoth = require("mammoth");
-const pdfParse = require("pdf-parse");
+import mammoth from "mammoth";
+import pdfParse from "pdf-parse";
 
-const extractText = async (fileBuffer, mimeType) => {
+const extractText = async (fileBuffer: Buffer, mimeType: string): Promise<string> => {
   if (
     mimeType ===
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
@@ -16,4 +16,4 @@ const extractText = async (fileBuffer, mimeType) => {
   }
 };
 
-module.exports = extractText;
+export default extractText;

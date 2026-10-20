@@ -1,6 +1,8 @@
-const cleanAndParseJSON = require("./cleanParseJson");
+import cleanAndParseJSON from "./cleanParseJson";
+import { completionSchema, jobOutputSchema } from "../schemas";
+import { requiredEnv } from "../env";
 
-const parseResumeText = async (resumeText) => {
+const parseResumeText = async (resumeText: string) => {
   const prompt = `Extract the following details from the resume text below:
 - Name
 - Work Experience (include title, company and responsibilities) 
@@ -36,7 +38,7 @@ ${resumeText}
       {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+          Authorization: `Bearer ${requiredEnv("OPENROUTER_API_KEY")}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
@@ -47,20 +49,20 @@ ${resumeText}
       }
     );
 
-    const data = await response.json();
+    const data: unknown = await response.json();
 
     if (!response.ok) {
-      throw new Error(data.error?.message || "Open router request failed");
+      throw new Error("OpenRouter request failed");
     }
-    const parsed = cleanAndParseJSON(data.choices[0].message.content);
+    const completion = completionSchema.parse(data);
+    const parsed = cleanAndParseJSON(completion.choices[0]!.message.content);
     return parsed;
   } catch (err) {
-    console.error("Failed to parse resume:", err);
-    return null;
+    throw new Error("Resume parsing failed", { cause: err });
   }
 };
 
-const parseJobDescription = async (job_description) => {
+const parseJobDescription = async (job_description: string): Promise<{ responsibilities: string[]; summary: string }> => {
   const prompt = `Extract the following from this job description:
   1. Responsibilities (as an array)
   2. Summary (a brief 5 sentence summary of the job)
@@ -83,7 +85,7 @@ ${job_description}
       {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+          Authorization: `Bearer ${requiredEnv("OPENROUTER_API_KEY")}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
@@ -94,19 +96,20 @@ ${job_description}
       }
     );
 
-    const data = await response.json();
+    const data: unknown = await response.json();
 
     if (!response.ok) {
-      throw new Error(data.error?.message || "Open router request failed");
+      throw new Error("OpenRouter request failed");
     }
-    const parsed = JSON.parse(
-      data.choices[0].message.content.replace(/```json|```/g, "").trim()
+    const completion = completionSchema.parse(data);
+    const raw: unknown = JSON.parse(
+      completion.choices[0]!.message.content.replace(/```json|```/g, "").trim()
     );
+    const parsed = jobOutputSchema.parse(raw);
     return parsed;
   } catch (err) {
-    console.error("Failed to parse resume:", err);
-    return null;
+    throw new Error("Job description parsing failed", { cause: err });
   }
 };
 
-module.exports = { parseResumeText, parseJobDescription };
+export { parseResumeText,parseJobDescription };

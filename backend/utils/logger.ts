@@ -1,4 +1,4 @@
-const winston = require("winston");
+import winston from "winston";
 
 const customLevels = {
   levels: {
@@ -28,6 +28,8 @@ const formatter = winston.format.combine(
 );
 
 class Logger {
+  private readonly logger: winston.Logger;
+
   constructor() {
     const prodTransport = new winston.transports.File({
       filename: "logs/error.log",
@@ -50,29 +52,29 @@ class Logger {
     winston.addColors(customLevels.colors);
   }
 
-  trace(message, meta) {
+  trace(message: string, meta?: Record<string, unknown>) {
     this.logger.log("trace", message, meta);
   }
 
-  debug(message, meta) {
+  debug(message: string, meta?: Record<string, unknown>) {
     this.logger.log("debug", message, meta);
   }
 
-  info(message, meta) {
+  info(message: string, meta?: Record<string, unknown>) {
     this.logger.log("info", message, meta);
   }
 
-  warn(message, meta) {
+  warn(message: string, meta?: Record<string, unknown>) {
     this.logger.log("warn", message, meta);
   }
 
-  error(message, meta) {
+  error(message: string, meta?: Record<string, unknown>) {
     this.logger.log("error", message, meta);
   }
 
-  fatal(message, meta) {
+  fatal(message: string, meta?: Record<string, unknown>) {
     this.logger.log("fatal", message, meta);
   }
 }
 
-module.exports = { logger: new Logger() };
+export const logger = new Logger();

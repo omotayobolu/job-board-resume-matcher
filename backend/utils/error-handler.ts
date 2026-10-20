@@ -1,4 +1,4 @@
-const { logger } = require("./logger");
+import { logger } from "./logger";
 
 const HttpStatusCode = {
   OK: 200,
@@ -11,7 +11,11 @@ const HttpStatusCode = {
 };
 
 class CustomError extends Error {
-  constructor(status, httpCode, message, isOperational) {
+  readonly status: string;
+  readonly httpCode: number;
+  readonly isOperational: boolean;
+
+  constructor(status: string, httpCode: number, message: string, isOperational = true) {
     super(message);
 
     Object.setPrototypeOf(this, new.target.prototype);
@@ -26,8 +30,8 @@ class CustomError extends Error {
 
 class APIError extends CustomError {
   constructor(
-    status,
-    httpCode = this.HttpStatusCode.INTERNAL_SERVER,
+    status: string,
+    httpCode = HttpStatusCode.INTERNAL_SERVER,
     isOperational = false,
     message = "Internal Server Error"
   ) {
@@ -36,15 +40,16 @@ class APIError extends CustomError {
 }
 
 class ErrorHandler {
-  handleError(err) {
-    logger.error(err.message, { stack: err.stack });
+  handleError(err: unknown): void {
+    const error = err instanceof Error ? err : new Error(String(err));
+    const cause = error.cause instanceof Error ? error.cause.stack : undefined;
+    logger.error(error.message, {
+      stack: [error.stack, cause].filter(Boolean).join("\nCaused by: "),
+    });
   }
 
-  isTrustedError(error) {
-    if (error instanceof CustomError) {
-      return error.isOperational;
-    }
-    return false;
+  isTrustedError(error: unknown): error is CustomError {
+    return error instanceof CustomError && error.isOperational === true;
   }
 }
 
@@ -61,9 +66,5 @@ class ErrorHandler {
 //   return "An error occurred";
 // }
 
-module.exports = {
-  HttpStatusCode,
-  CustomError,
-  APIError,
-  errorHandler: new ErrorHandler(),
-};
+const errorHandler = new ErrorHandler();
+export { HttpStatusCode, CustomError, APIError, errorHandler };

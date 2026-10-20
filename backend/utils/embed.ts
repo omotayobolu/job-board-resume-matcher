@@ -1,4 +1,6 @@
-function resumeToString(resume) {
+import type { JobDetails, ResumeProfile } from "../types/domain";
+
+function resumeToString(resume: ResumeProfile): string {
   const workDescriptions = resume.work_experience
     ?.map((job) => {
       const responsibilities = Array.isArray(job.responsibilities)
@@ -20,7 +22,7 @@ function resumeToString(resume) {
   ].join("\n");
 }
 
-const embedResume = async (parsedResume) => {
+const embedResume = async (parsedResume: ResumeProfile) => {
   const { pipeline } = await import("@xenova/transformers");
   const embedder = await pipeline(
     "feature-extraction",
@@ -36,7 +38,7 @@ const embedResume = async (parsedResume) => {
   return embeddingResult.data;
 };
 
-function jobToString(job) {
+function jobToString(job: JobDetails): string {
   const responsibilities = Array.isArray(job.responsibilities)
     ? job.responsibilities.join("\n- ")
     : "";
@@ -56,7 +58,7 @@ function jobToString(job) {
   `;
 }
 
-const embedJob = async (job_details) => {
+const embedJob = async (job_details: JobDetails) => {
   const { pipeline } = await import("@xenova/transformers");
   const embedder = await pipeline(
     "feature-extraction",
@@ -72,7 +74,7 @@ const embedJob = async (job_details) => {
   return embeddingResult.data;
 };
 
-const embedQuestion = async (question) => {
+const embedQuestion = async (question: string) => {
   const { pipeline } = await import("@xenova/transformers");
   const embedder = await pipeline(
     "feature-extraction",
@@ -86,4 +88,4 @@ const embedQuestion = async (question) => {
   return questionEmbedding.data;
 };
 
-module.exports = { embedResume, embedJob, embedQuestion };
+export { embedResume,embedJob,embedQuestion };
