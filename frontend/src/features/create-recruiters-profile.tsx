@@ -1,4 +1,5 @@
-import OnboardingDesign from "@/components/onboarding-design";
+import BrandLogo from "@/components/brand-logo";
+import CountrySelect from "@/components/country-select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -8,10 +9,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { selectUser } from "@/store/userSlice";
-import axios from "axios";
+import { axiosInstance } from "@/lib/axios-instance";
+import { selectUser, setUser } from "@/store/userSlice";
 import { useForm, Controller } from "react-hook-form";
-import { useSelector } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
 
@@ -22,8 +23,9 @@ interface recruiterProfileForm {
 }
 
 const RecruiterProfile = () => {
-  const user = useSelector(selectUser);
   const navigate = useNavigate();
+  const dispatch = useDispatch();
+  const user = useSelector(selectUser);
 
   const {
     register,
@@ -37,21 +39,18 @@ const RecruiterProfile = () => {
   const onsubmit = async (data: recruiterProfileForm) => {
     console.log(data);
     try {
-      const response = await axios.post(
-        `${import.meta.env.VITE_API_URL}/recruiter/create-profile`,
+      const response = await axiosInstance.post(
+        "/recruiter/create-profile",
         {
-          user_id: user.id,
           company_name: data.companyName,
           location: data.companyLocation,
           type_of_organization: data.organizationType,
-        },
-        {
-          withCredentials: true,
         }
       );
       if (response.status === 200) {
         console.log("Recruiter profile created successfully", response.data);
         toast.success(response.data.message);
+        dispatch(setUser({ ...user, hasprofile: true }));
         navigate("/dashboard");
       } else {
         console.error("Failed to create recruiter profile");
@@ -62,14 +61,19 @@ const RecruiterProfile = () => {
     }
   };
   return (
-    <div className="w-full min-h-screen h-full flex flex-row">
-      <OnboardingDesign />
-      <div className="bg-light-grey flex justify-center items-center lg:w-[60%] w-full px-4">
-        <div className="bg-white min-h-[485px] w-full sm:w-[600px] md:w-[700px] lg:w-[800px] max-w-full pt-20 rounded-3xl drop-shadow-[0px_6px_40px_rgba(245,245,245,1)] flex justify-center">
+    <div className="w-full min-h-screen flex flex-col bg-light-grey">
+      <header className="px-6 sm:px-12 py-5">
+        <BrandLogo />
+      </header>
+      <div className="flex-1 flex justify-center items-center w-full px-4 py-10">
+        <div className="bg-white min-h-[485px] w-full sm:w-[600px] md:w-[700px] lg:w-[800px] max-w-full pt-12 rounded-3xl drop-shadow-[0px_6px_40px_rgba(245,245,245,1)] flex justify-center">
           <form
             onSubmit={handleSubmit(onsubmit)}
             className="lg:w-[600px] w-full px-8"
           >
+            <h1 className="mb-8 text-dark-grey text-2xl sm:text-3xl font-semibold">
+              Complete your recruiter profile
+            </h1>
             <div className="">
               <label
                 htmlFor="companyName"
@@ -99,14 +103,19 @@ const RecruiterProfile = () => {
               >
                 Where is your company located?
               </label>
-              <Input
-                id="companyLocation"
-                type="text"
-                placeholder="Company Location"
-                {...register("companyLocation", {
-                  required: "Please enter your company location.",
-                })}
-                className={`${errors.companyLocation ? "border-red" : ""}`}
+              <Controller
+                name="companyLocation"
+                control={control}
+                rules={{ required: "Please select your company's country." }}
+                render={({ field }) => (
+                  <CountrySelect
+                    id="companyLocation"
+                    value={field.value}
+                    onChange={field.onChange}
+                    onBlur={field.onBlur}
+                    invalid={!!errors.companyLocation}
+                  />
+                )}
               />
               {errors.companyLocation && (
                 <p className="text-red text-sm">
@@ -189,7 +198,10 @@ const RecruiterProfile = () => {
               )}
             </div> */}
             <div className="my-16 text-center">
-              <Button variant="primary" className="py-8 px-16 text-xl">
+              <Button
+                variant="primary"
+                className="h-11 px-8 text-base sm:h-16 sm:px-16 sm:text-xl"
+              >
                 Create Profile
               </Button>
             </div>

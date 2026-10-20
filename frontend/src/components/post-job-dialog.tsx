@@ -6,6 +6,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "./ui/dialog";
+import CountrySelect from "./country-select";
 import { Input } from "./ui/input";
 import {
   Select,
@@ -21,7 +22,7 @@ import { useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { useSelector } from "react-redux";
 import { selectUser } from "@/store/userSlice";
-import axios from "axios";
+import { axiosInstance } from "@/lib/axios-instance";
 import { useQueryClient } from "@tanstack/react-query";
 interface PostJobDialogProps {
   openDialog: boolean;
@@ -75,8 +76,8 @@ const PostJobDIalog = ({ openDialog, setOpenDialog }: PostJobDialogProps) => {
   const onsubmit = async (data: JobDetails) => {
     try {
       setIsPosting(true);
-      const response = await axios.post(
-        `${import.meta.env.VITE_API_URL}/jobs/create-job`,
+      const response = await axiosInstance.post(
+        "/jobs/create-job",
         {
           recruiter_id: user.id,
           job_details: {
@@ -86,9 +87,6 @@ const PostJobDIalog = ({ openDialog, setOpenDialog }: PostJobDialogProps) => {
             job_description: data.jobDescription,
             required_skills: data.skills,
           },
-        },
-        {
-          withCredentials: true,
         }
       );
       console.log("Job posted successfully:", response.data);
@@ -146,15 +144,22 @@ const PostJobDIalog = ({ openDialog, setOpenDialog }: PostJobDialogProps) => {
               >
                 Location
               </label>
-              <Input
-                {...register("location", {
-                  required: "Location is required",
-                })}
-                name="location"
-                id="location"
-                placeholder="United States"
-                className={`${errors.location ? "border-red" : ""} mt-1.5`}
-              />
+              <div className="mt-1.5">
+                <Controller
+                  name="location"
+                  control={control}
+                  rules={{ required: "Location is required" }}
+                  render={({ field }) => (
+                    <CountrySelect
+                      id="location"
+                      value={field.value}
+                      onChange={field.onChange}
+                      onBlur={field.onBlur}
+                      invalid={!!errors.location}
+                    />
+                  )}
+                />
+              </div>
               {errors.location && (
                 <p className="text-xs text-red mt-1">
                   {errors.location.message}
