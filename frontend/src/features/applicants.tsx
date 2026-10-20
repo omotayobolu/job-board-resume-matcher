@@ -32,7 +32,7 @@ import { useSelector } from "react-redux";
 import { Badge } from "@/components/ui/badge";
 import * as XLSX from "xlsx";
 import { toast } from "sonner";
-import axios from "axios";
+import { axiosInstance } from "@/lib/axios-instance";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -162,11 +162,9 @@ const JobApplicants = () => {
       const newStatus =
         currentJob?.job_status === "active" ? "closed" : "active";
       const actionText = newStatus === "closed" ? "closed" : "reopened";
-      await axios.patch(
-        `${import.meta.env.VITE_API_URL}/jobs/update-job-status/${selectedJob}`,
-        { job_status: newStatus },
-        { withCredentials: true }
-      );
+      await axiosInstance.patch(`/jobs/update-job-status/${selectedJob}`, {
+        job_status: newStatus,
+      });
       toast.success(`Applications ${actionText} successfully.`);
       await refetchJobs();
       setIsToggling(false);
@@ -179,10 +177,7 @@ const JobApplicants = () => {
 
   const deleteJob = async (jobId: string) => {
     try {
-      await axios.delete(
-        `${import.meta.env.VITE_API_URL}/jobs/delete-job/${jobId}`,
-        { withCredentials: true }
-      );
+      await axiosInstance.delete(`/jobs/delete-job/${jobId}`);
       toast.success("Job deleted successfully.");
       navigate("/dashboard");
       refetchJobs();
@@ -209,14 +204,9 @@ const JobApplicants = () => {
       setIsQueryLoading(true);
       setQuery(""); // Clear input immediately
 
-      const response = await axios.post(
-        `${
-          import.meta.env.VITE_API_URL
-        }/recruiter/query-applications/${selectedJob}`,
-        {
-          question,
-        },
-        { withCredentials: true }
+      const response = await axiosInstance.post(
+        `/recruiter/query-applications/${selectedJob}`,
+        { question }
       );
 
       setIsQueryLoading(false);

@@ -1,4 +1,4 @@
-import axios from "axios";
+import { axiosInstance } from "@/lib/axios-instance";
 
 export type Job = {
   id: string;
@@ -28,12 +28,7 @@ export type Applicants = {
 
 export const fetchJobs = async (): Promise<Job[]> => {
   try {
-    const response = await axios.get(
-      `${import.meta.env.VITE_API_URL}/jobs/get-jobs`,
-      {
-        withCredentials: true,
-      }
-    );
+    const response = await axiosInstance.get("/jobs/get-jobs");
     return response.data.jobs;
   } catch (error) {
     console.error("Error fetching jobs:", error);
@@ -45,10 +40,7 @@ export const fetchRecruiterJobs = async (
   recruiterId: string
 ): Promise<Job[]> => {
   try {
-    const response = await axios.get(
-      `${import.meta.env.VITE_API_URL}/jobs/get-jobs/${recruiterId}`,
-      { withCredentials: true }
-    );
+    const response = await axiosInstance.get(`/jobs/get-jobs/${recruiterId}`);
     return response.data.jobs;
   } catch (error) {
     console.error("Error fetching recruiter jobs:", error);
@@ -61,12 +53,7 @@ export const fetchApplicantsByJobId = async (
 ): Promise<Applicants[]> => {
   console.log(`Fetching applicants for job ID: ${jobId}`);
   try {
-    const response = await axios.get(
-      `${import.meta.env.VITE_API_URL}/applications/${jobId}`,
-      {
-        withCredentials: true,
-      }
-    );
+    const response = await axiosInstance.get(`/applications/${jobId}`);
     console.log(response);
     return response.data.applications;
   } catch (error) {

@@ -1,5 +1,5 @@
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
-import axios from "axios";
+import { axiosInstance } from "@/lib/axios-instance";
 
 const initialState = {
   user: {},
@@ -7,9 +7,7 @@ const initialState = {
 };
 
 export const fetchUser = createAsyncThunk("user/fetchUser", async () => {
-  const response = await axios.get(`${import.meta.env.VITE_API_URL}/user`, {
-    withCredentials: true,
-  });
+  const response = await axiosInstance.get("/user");
   return response.data;
 });
 
@@ -40,11 +38,13 @@ const userSlice = createSlice({
   },
 });
 
-type UserType = {
+export type Role = "job_seeker" | "recruiter";
+
+export type UserType = {
   id: string;
   name: string;
   email: string;
-  role?: string;
+  role?: Role | null;
   hasprofile: boolean;
 };
 
