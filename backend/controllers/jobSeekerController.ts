@@ -1,23 +1,42 @@
-const { HttpStatusCode, CustomError } = require("../utils/error-handler");
-const pool = require("../db");
-const path = require("path");
-const { cloudinary } = require("../config/cloudinary");
-const streamifier = require("streamifier");
-const extractText = require("../utils/extractResumeText");
-const { parseResumeText } = require("../utils/parseResume");
-const { embedResume } = require("../utils/embed");
-const index = require("../config/pinecone");
+import type { Request, Response, NextFunction } from "express";
+import { HttpStatusCode, CustomError } from "../utils/error-handler";
+import pool from "../db";
+import { cloudinary } from "../config/cloudinary";
+import streamifier from "streamifier";
+import extractText from "../utils/extractResumeText";
+import { parseResumeText } from "../utils/parseResume";
+import { embedResume } from "../utils/embed";
+import index from "../config/pinecone";
+import { jobSeekerProfileSchema } from "../schemas";
+import type { JobSeekerProfileRow } from "../types/domain";
 
-const createProfile = async (req, res, next) => {
-  const { job_title, location, remote_preference } = req.body;
+const createProfile = async (req: Request, res: Response, next: NextFunction) => {
   const user_id = req.user.id;
   try {
+    const { job_title, location, remote_preference } = jobSeekerProfileSchema.parse(req.body as unknown);
     if (!user_id) {
       throw new CustomError(
         "BAD REQUEST",
         HttpStatusCode.BAD_REQUEST,
         "User ID is required.",
         true
+      );
+    }
+    if (!job_title || !location || !remote_preference || !req.file) {
+      throw new CustomError(
+        "BAD REQUEST",
+        HttpStatusCode.BAD_REQUEST,
+        "Job title, location, remote preference, and resume are required."
+      );
+    }
+    if (![
+      "application/pdf",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ].includes(req.file.mimetype)) {
+      throw new CustomError(
+        "BAD REQUEST",
+        HttpStatusCode.BAD_REQUEST,
+        "Resume must be a PDF or DOCX file."
       );
     }
     const resumeText = await extractText(req.file.buffer, req.file.mimetype);
@@ -47,7 +66,7 @@ const createProfile = async (req, res, next) => {
 
     await index.namespace("job_seeker").upsert([vector]);
 
-    const streamUpload = (buffer, originalname) => {
+    const streamUpload = (buffer: Buffer, originalname: string): Promise<{ secure_url: string }> => {
       return new Promise((resolve, reject) => {
         const ext = originalname.split(".").pop();
         const baseName = originalname.replace(/\.[^/.]+$/, "");
@@ -61,7 +80,7 @@ const createProfile = async (req, res, next) => {
             overwrite: true,
           },
           (error, result) => {
-            if (result) resolve(result);
+            if (result?.secure_url) resolve({ secure_url: result.secure_url });
             else reject(error);
           }
         );
@@ -71,16 +90,7 @@ const createProfile = async (req, res, next) => {
 
     const resume = await streamUpload(req.file.buffer, req.file.originalname);
 
-    if (!user_id || !job_title || !location || !remote_preference || !resume) {
-      throw new CustomError(
-        "BAD REQUEST",
-        HttpStatusCode.BAD_REQUEST,
-        "User Id and other fields are required!",
-        true
-      );
-    }
-
-    const userCheck = await pool.query(
+    const userCheck = await pool.query<{ id: string; role: string | null }>(
       "SELECT id, role FROM users WHERE id = $1",
       [user_id]
     );
@@ -95,7 +105,7 @@ const createProfile = async (req, res, next) => {
 
     const user = userCheck.rows[0];
 
-    if (user.role === "recruiter") {
+    if (user?.role !== "job_seeker") {
       throw new CustomError(
         "UNAUTHORIZED",
         HttpStatusCode.UNAUTHORIZED,
@@ -104,7 +114,7 @@ const createProfile = async (req, res, next) => {
       );
     }
 
-    const result = await pool.query(
+    const result = await pool.query<JobSeekerProfileRow>(
       "INSERT INTO job_seeker (user_id, job_title, location, remote_preference, resume_url, created_at) VALUES ($1, $2, $3, $4, $5, NOW()) RETURNING *",
       [user_id, job_title, location, remote_preference, resume.secure_url]
     );
@@ -123,4 +133,4 @@ const createProfile = async (req, res, next) => {
   }
 };
 
-module.exports = { createProfile };
+export { createProfile };

@@ -1,12 +1,16 @@
-const { HttpStatusCode, CustomError } = require("../utils/error-handler");
-const pool = require("../db");
-const { embedQuestion } = require("../utils/embed");
-const index = require("../config/pinecone");
+import type { Request, Response, NextFunction } from "express";
+import { HttpStatusCode, CustomError } from "../utils/error-handler";
+import pool from "../db";
+import { embedQuestion } from "../utils/embed";
+import index from "../config/pinecone";
+import { recruiterProfileSchema, recruiterQuestionSchema, jobIdParamSchema, completionSchema } from "../schemas";
+import { requiredEnv } from "../env";
+import type { RecruiterProfileRow } from "../types/domain";
 
-const createRecruiterProfile = async (req, res, next) => {
-  const { company_name, type_of_organization, location } = req.body;
+const createRecruiterProfile = async (req: Request, res: Response, next: NextFunction) => {
   const user_id = req.user.id;
   try {
+    const { company_name, type_of_organization, location } = recruiterProfileSchema.parse(req.body as unknown);
     if (!user_id || !company_name || !type_of_organization || !location) {
       throw new CustomError(
         "BAD REQUEST",
@@ -16,7 +20,7 @@ const createRecruiterProfile = async (req, res, next) => {
       );
     }
 
-    const userCheck = await pool.query(
+    const userCheck = await pool.query<{ id: string; role: string | null }>(
       "SELECT id, role FROM users WHERE id = $1",
       [user_id]
     );
@@ -32,7 +36,7 @@ const createRecruiterProfile = async (req, res, next) => {
 
     const user = userCheck.rows[0];
 
-    if (user.role === "job seeker") {
+    if (user?.role !== "recruiter") {
       throw new CustomError(
         "UNAUTHORIZED",
         HttpStatusCode.UNAUTHORIZED,
@@ -41,7 +45,7 @@ const createRecruiterProfile = async (req, res, next) => {
       );
     }
 
-    const result = await pool.query(
+    const result = await pool.query<RecruiterProfileRow>(
       "INSERT INTO recruiter (user_id, company_name, type_of_organization, location, created_at) VALUES ($1, $2, $3, $4, NOW()) RETURNING *",
       [user_id, company_name, type_of_organization, location]
     );
@@ -59,10 +63,11 @@ const createRecruiterProfile = async (req, res, next) => {
   }
 };
 
-const queryApplications = async (req, res, next) => {
-  const { question, jobId } = req.body;
+const queryApplications = async (req: Request, res: Response, next: NextFunction) => {
   const recruiterId = req.user.id;
   try {
+    const { question } = recruiterQuestionSchema.parse(req.body as unknown);
+    const { jobId } = jobIdParamSchema.parse(req.params);
     if (!recruiterId || !question) {
       throw new CustomError(
         "BAD REQUEST",
@@ -72,7 +77,7 @@ const queryApplications = async (req, res, next) => {
       );
     }
 
-    const checkRecruiter = await pool.query(
+    const checkRecruiter = await pool.query<{ id: string; role: string | null }>(
       "SELECT * FROM users WHERE id = $1",
       [recruiterId]
     );
@@ -87,7 +92,7 @@ const queryApplications = async (req, res, next) => {
 
     const recruiter = checkRecruiter.rows[0];
 
-    if (recruiter.role === "job seeker") {
+    if (recruiter?.role !== "recruiter") {
       throw new CustomError(
         "UNAUTHORIZED",
         HttpStatusCode.UNAUTHORIZED,
@@ -117,7 +122,7 @@ const queryApplications = async (req, res, next) => {
       includeMetadata: true,
     });
 
-    const appliedJobseekersId = await pool.query(
+    const appliedJobseekersId = await pool.query<{ job_seeker_id: string }>(
       "SELECT job_seeker_id FROM applications where job_id = $1",
       [jobId]
     );
@@ -131,7 +136,7 @@ const queryApplications = async (req, res, next) => {
     const context = appliedJobseekers
       .map(
         (r, i) =>
-          `${i + 1}. ${r.metadata.name}:\n${r.metadata.job_experience_details}`
+          `${i + 1}. ${r.metadata?.name ?? "Unknown"}:\n${r.metadata?.job_experience_details ?? ""}`
       )
       .join("\n\n");
 
@@ -151,7 +156,7 @@ const queryApplications = async (req, res, next) => {
       {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+          Authorization: `Bearer ${requiredEnv("OPENROUTER_API_KEY")}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
@@ -162,10 +167,9 @@ const queryApplications = async (req, res, next) => {
       }
     );
 
-    const data = await response.json();
-
-    console.log("Data", data);
-    const answer = data.choices[0].message.content;
+    if (!response.ok) throw new Error("OpenRouter request failed");
+    const data: unknown = await response.json();
+    const answer = completionSchema.parse(data).choices[0]!.message.content;
 
     res.status(HttpStatusCode.OK).json({ answer });
   } catch (error) {
@@ -173,4 +177,4 @@ const queryApplications = async (req, res, next) => {
   }
 };
 
-module.exports = { createRecruiterProfile, queryApplications };
+export { createRecruiterProfile,queryApplications };

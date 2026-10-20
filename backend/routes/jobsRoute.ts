@@ -1,14 +1,14 @@
-const express = require("express");
+import express from "express";
 const router = express.Router();
-const {
+import {
   getJobs,
   getJob,
   createJob,
   deleteJob,
   getJobsByRecruiter,
   updateJobStatus,
-} = require("../controllers/jobsController");
-const { isRecruiter } = require("../middlewares/authMiddleware");
+} from "../controllers/jobsController";
+import { isRecruiter } from "../middlewares/authMiddleware";
 
 router
   .post("/create-job", isRecruiter, createJob)
@@ -18,4 +18,4 @@ router
   .patch("/update-job-status/:id", isRecruiter, updateJobStatus)
   .delete("/delete-job/:id", isRecruiter, deleteJob);
 
-module.exports = router;
+export default router;

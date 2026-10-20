@@ -1,10 +1,10 @@
-const express = require("express");
+import express from "express";
 const router = express.Router();
-const {
+import {
   applyToJob,
   getAllApplications,
-} = require("../controllers/applicationController");
+} from "../controllers/applicationController";
 
 router.post("/apply", applyToJob).get("/:jobId", getAllApplications);
 
-module.exports = router;
+export default router;

@@ -1,13 +1,16 @@
-const { HttpStatusCode, CustomError } = require("../utils/error-handler");
-const pool = require("../db");
-const { parseJobDescription } = require("../utils/parseResume");
-const { embedJob } = require("../utils/embed");
-const index = require("../config/pinecone");
+import type { Request, Response, NextFunction } from "express";
+import { HttpStatusCode, CustomError } from "../utils/error-handler";
+import pool from "../db";
+import { parseJobDescription } from "../utils/parseResume";
+import { embedJob } from "../utils/embed";
+import index from "../config/pinecone";
+import { createJobSchema, idParamSchema, jobStatusSchema, recruiterIdParamSchema } from "../schemas";
+import type { JobDetails, JobRow } from "../types/domain";
 
-const createJob = async (req, res, next) => {
-  const { job_details } = req.body;
+const createJob = async (req: Request, res: Response, next: NextFunction) => {
   const recruiter_id = req.user.id;
   try {
+    const { job_details } = createJobSchema.parse(req.body as unknown);
     if (!recruiter_id || !job_details) {
       throw new CustomError(
         "BAD REQUEST",
@@ -16,7 +19,7 @@ const createJob = async (req, res, next) => {
       );
     }
 
-    const result = await pool.query(
+    const result = await pool.query<{ id: string }>(
       "INSERT INTO jobs (recruiter_id, job_title, job_description, location, required_skills, job_status, work_type, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW()) RETURNING id",
       [
         recruiter_id,
@@ -29,56 +32,55 @@ const createJob = async (req, res, next) => {
       ]
     );
 
-    const job_id = result.rows[0].id.toString();
+    const saved = result.rows[0];
+    if (!saved) throw new Error("Job insert returned no row");
+    const job_id = saved.id;
 
     res
       .status(HttpStatusCode.CREATED)
       .json({ message: "Job created successfully." });
 
-    processEmbeddings(job_id, job_details);
+    processEmbeddings(job_id, job_details).catch((error) => {
+      console.error(`Embedding failed for job ${job_id}:`, error);
+    });
   } catch (error) {
     next(error);
   }
 };
 
-async function processEmbeddings(job_id, job_details) {
-  try {
-    const jobDetails = await parseJobDescription(job_details.job_description);
-    const complete_job_details = {
-      ...job_details,
-      responsibilities: jobDetails.responsibilities,
-    };
-    const embedding = await embedJob(complete_job_details);
+async function processEmbeddings(job_id: string, job_details: JobDetails) {
+  const jobDetails = await parseJobDescription(job_details.job_description);
+  const complete_job_details = {
+    ...job_details,
+    responsibilities: jobDetails.responsibilities,
+  };
+  const embedding = await embedJob(complete_job_details);
 
-    const jobVector = {
-      id: job_id,
-      values: Array.from(embedding),
-      metadata: {
-        type: "job",
-        title: complete_job_details.job_title || "unknown",
-        location: complete_job_details.location || "",
-        work_type: complete_job_details.work_type || "",
-        status: complete_job_details.job_status || "",
-        required_skills: Array.isArray(complete_job_details.required_skills)
-          ? complete_job_details.required_skills.join(", ")
-          : complete_job_details.required_skills || "",
-        responsibilities: Array.isArray(complete_job_details.responsibilities)
-          ? complete_job_details.responsibilities
-          : [],
-      },
-    };
+  const jobVector = {
+    id: job_id,
+    values: Array.from(embedding),
+    metadata: {
+      type: "job",
+      title: complete_job_details.job_title || "unknown",
+      location: complete_job_details.location || "",
+      work_type: complete_job_details.work_type || "",
+      status: complete_job_details.job_status || "",
+      required_skills: Array.isArray(complete_job_details.required_skills)
+        ? complete_job_details.required_skills.join(", ")
+        : complete_job_details.required_skills || "",
+      responsibilities: Array.isArray(complete_job_details.responsibilities)
+        ? complete_job_details.responsibilities
+        : [],
+    },
+  };
 
-    await index.namespace("job").upsert([jobVector]);
-  } catch (error) {
-    console.error("Error processing embeddings:", error);
-    next(error);
-  }
+  await index.namespace("job").upsert([jobVector]);
 }
 
-const getJobs = async (req, res, next) => {
+const getJobs = async (req: Request, res: Response, next: NextFunction) => {
   const userId = req.user.id;
   try {
-    const jobs = await pool.query(
+    const jobs = await pool.query<Omit<JobRow, "recruiter_id"> & { hasapplied: boolean }>(
       `SELECT
       jobs.id,
       jobs.job_title,
@@ -95,7 +97,8 @@ const getJobs = async (req, res, next) => {
       END AS hasApplied
       FROM jobs
       LEFT JOIN applications
-      ON jobs.id = applications.job_id AND applications.job_seeker_id = $1`,
+      ON jobs.id = applications.job_id AND applications.job_seeker_id = $1
+      ORDER BY jobs.created_at DESC`,
       [userId]
     );
     res.status(HttpStatusCode.OK).json({ jobs: jobs.rows });
@@ -104,9 +107,9 @@ const getJobs = async (req, res, next) => {
   }
 };
 
-const getJobsByRecruiter = async (req, res, next) => {
+const getJobsByRecruiter = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { recruiterId } = req.params;
+    const { recruiterId } = recruiterIdParamSchema.parse(req.params);
     if (!recruiterId) {
       throw new CustomError(
         "BAD REQUEST",
@@ -116,7 +119,7 @@ const getJobsByRecruiter = async (req, res, next) => {
       );
     }
 
-    const recruiterCheck = await pool.query(
+    const recruiterCheck = await pool.query<{ id: string; role: string | null }>(
       "SELECT id, role FROM users WHERE id = $1",
       [recruiterId]
     );
@@ -130,7 +133,7 @@ const getJobsByRecruiter = async (req, res, next) => {
       );
     }
 
-    if (recruiterCheck.rows[0].role !== "recruiter") {
+    if (recruiterCheck.rows[0]?.role !== "recruiter") {
       throw new CustomError(
         "FORBIDDEN",
         HttpStatusCode.FORBIDDEN,
@@ -139,7 +142,7 @@ const getJobsByRecruiter = async (req, res, next) => {
       );
     }
 
-    const jobs = await pool.query(
+    const jobs = await pool.query<Omit<JobRow, "recruiter_id"> & { applicants_count: string; top_match: number | null }>(
       `SELECT 
       jobs.id,
       jobs.job_title,
@@ -167,9 +170,9 @@ const getJobsByRecruiter = async (req, res, next) => {
   }
 };
 
-const getJob = async (req, res, next) => {
-  const { id } = req.params;
+const getJob = async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const { id } = idParamSchema.parse(req.params);
     if (!id) {
       throw new CustomError(
         "BAD REQUEST",
@@ -179,7 +182,7 @@ const getJob = async (req, res, next) => {
       );
     }
 
-    const job = await pool.query("SELECT * FROM jobs WHERE id = $1", [id]);
+    const job = await pool.query<JobRow>("SELECT * FROM jobs WHERE id = $1", [id]);
 
     if (job.rowCount === 0) {
       throw new CustomError(
@@ -196,11 +199,10 @@ const getJob = async (req, res, next) => {
   }
 };
 
-const updateJobStatus = async (req, res, next) => {
-  const { id } = req.params;
-  const { job_status } = req.body;
-
+const updateJobStatus = async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const { id } = idParamSchema.parse(req.params);
+    const { job_status } = jobStatusSchema.parse(req.body as unknown);
     if (!id || !job_status) {
       return res.status(HttpStatusCode.BAD_REQUEST).json({
         error: "Job ID and status are required to update job status.",
@@ -208,7 +210,7 @@ const updateJobStatus = async (req, res, next) => {
     }
 
     const recruiter_id = req.user.id;
-    const existingJob = await pool.query(
+    const existingJob = await pool.query<JobRow>(
       "SELECT * FROM jobs WHERE id = $1 AND recruiter_id = $2",
       [id, recruiter_id]
     );
@@ -219,7 +221,7 @@ const updateJobStatus = async (req, res, next) => {
       });
     }
 
-    const result = await pool.query(
+    const result = await pool.query<JobRow>(
       "UPDATE jobs SET job_status = $1 WHERE id = $2 RETURNING *",
       [job_status, id]
     );
@@ -233,10 +235,10 @@ const updateJobStatus = async (req, res, next) => {
   }
 };
 
-const deleteJob = async (req, res, next) => {
-  const { id } = req.params;
+const deleteJob = async (req: Request, res: Response, next: NextFunction) => {
   const recruiter_id = req.user.id;
   try {
+    const { id } = idParamSchema.parse(req.params);
     if (!id || !recruiter_id) {
       throw new CustomError(
         "BAD REQUEST",
@@ -246,7 +248,7 @@ const deleteJob = async (req, res, next) => {
       );
     }
 
-    const result = await pool.query(
+    const result = await pool.query<JobRow>(
       "DELETE FROM jobs WHERE id = $1 AND recruiter_id = $2 RETURNING *",
       [id, recruiter_id]
     );
@@ -266,11 +268,4 @@ const deleteJob = async (req, res, next) => {
   }
 };
 
-module.exports = {
-  createJob,
-  getJobs,
-  getJob,
-  deleteJob,
-  getJobsByRecruiter,
-  updateJobStatus,
-};
+export { createJob,getJobs,getJob,deleteJob,getJobsByRecruiter,updateJobStatus };
