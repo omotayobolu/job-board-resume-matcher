@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { fetchJobs, type Job } from "@/lib/jobs-api";
 import { useState, type JSX } from "react";
 import { formatDistanceToNow } from "date-fns";
-import axios from "axios";
+import { axiosInstance } from "@/lib/axios-instance";
 import { toast } from "sonner";
 
 const formatRelativeTime = (dateString: string): string => {
@@ -18,6 +18,7 @@ const JobseekerDashboard = () => {
     isLoading,
     isError,
     error,
+    refetch: refetchJobs,
   } = useQuery({
     queryKey: ["jobs"],
     queryFn: () => fetchJobs(),
@@ -58,17 +59,16 @@ const JobseekerDashboard = () => {
   const applyToJob = async (jobId: string) => {
     setApplying(true);
     try {
-      const response = await axios.post(
-        `${import.meta.env.VITE_API_URL}/applications/apply`,
+      const response = await axiosInstance.post(
+        "/applications/apply",
         {
           jobId,
-        },
-        {
-          withCredentials: true,
         }
       );
       if (response.status === 201) {
         toast.success(response.data.message);
+        // Refetch jobs to update the hasapplied status
+        await refetchJobs();
         setApplying(false);
       }
     } catch (error) {
@@ -122,28 +122,6 @@ const JobseekerDashboard = () => {
             </div>
           </div>
         </div>
-        <div className="border-2 border-[#E5E5E5] bg-white w-[35%] pb-10 p-8 rounded-4xl flex-grow">
-          <div className="flex flex-row items-center gap-3 ">
-            <div className="w-16 h-16 bg-black rounded-full flex-shrink-0"></div>
-            <div className="flex flex-col gap-2">
-              <h3 className="text-black text-xl font-medium">Ayoade Subomi</h3>
-              <p className="text-black  font-normal truncate text-ellipsis w-full max-w-3/4">
-                Product Designer | Software Engineer
-              </p>
-            </div>
-          </div>
-          <div className="mt-6">
-            <Link to="" className="text-[#6E62E5] underline underline-offset-2">
-              Complete Your Profile
-            </Link>
-            <div className="mt-5 flex flex-row items-center gap-2">
-              <div className="bg-[#E5E5E5] rounded-[12px] h-4 relative w-full">
-                <div className="absolute top-0 left-0 bg-[#7D67F4] h-4 w-full rounded-[12px]"></div>
-              </div>
-              <p className="text-sm">100%</p>
-            </div>
-          </div>
-        </div>
       </div>
       <div className="mt-6 flex flex-row items-start gap-6">
         <div className="border-2 border-[#E5E5E5] rounded-4xl bg-white w-[65%]">
@@ -169,11 +147,34 @@ const JobseekerDashboard = () => {
                   {job.job_description}
                 </p>
                 <div className="mt-5 flex flex-row flex-wrap items-center gap-2">
-                  {job.required_skills.map((skill) => (
-                    <span className="bg-[#E5E5E5] text-black text-sm font-normal px-4 py-1 rounded-4xl">
+                  {job.required_skills.map((skill, index) => (
+                    <span
+                      key={index}
+                      className="bg-[#E5E5E5] text-black text-sm font-normal px-4 py-1 rounded-4xl"
+                    >
                       {skill}
                     </span>
                   ))}
+                </div>
+                <div className="mt-4 flex justify-end">
+                  <Button
+                    variant={job.hasapplied ? "ghost" : "primary"}
+                    size="sm"
+                    disabled={job.hasapplied || applying}
+                    className="px-4 py-2 text-sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (!job.hasapplied) {
+                        applyToJob(job.id);
+                      }
+                    }}
+                  >
+                    {applying && selectedJob?.id === job.id
+                      ? "Applying..."
+                      : job.hasapplied
+                        ? "Applied"
+                        : "Apply"}
+                  </Button>
                 </div>
               </div>
             ))}
@@ -206,14 +207,19 @@ const JobseekerDashboard = () => {
                     variant={
                       selectedJob.hasapplied || applying ? "ghost" : "primary"
                     }
-                    className="text-right py-4 px-15 text-base font-medium "
-                    onClick={() => applyToJob(selectedJob.id)}
+                    className="text-right py-4 px-15 text-base font-medium"
+                    disabled={selectedJob.hasapplied || applying}
+                    onClick={() => {
+                      if (!selectedJob.hasapplied) {
+                        applyToJob(selectedJob.id);
+                      }
+                    }}
                   >
                     {applying
                       ? "Applying..."
                       : selectedJob.hasapplied
-                      ? "Applied"
-                      : "Apply"}
+                        ? "Applied"
+                        : "Apply"}
                   </Button>
                 </div>
               </div>

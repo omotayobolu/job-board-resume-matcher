@@ -427,7 +427,15 @@ const JobApplicants = () => {
                   </TableCell>
                   <TableCell>{formatDate(applicant.applied_at)}</TableCell>
                   <TableCell>
-                    <Button variant="primary" size="md">
+                    <Button
+                      variant="primary"
+                      size="md"
+                      onClick={() =>
+                        navigate(
+                          `/dashboard/messages/${applicant.job_seeker_id}`
+                        )
+                      }
+                    >
                       Message
                     </Button>
                   </TableCell>
