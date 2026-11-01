@@ -6,6 +6,7 @@ import { useState, type JSX } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { axiosInstance } from "@/lib/axios-instance";
 import { toast } from "sonner";
+import ResumeProcessingStatus from "./resume-processing-status";
 
 const formatRelativeTime = (dateString: string): string => {
   const date = new Date(dateString);
@@ -99,6 +100,7 @@ const JobseekerDashboard = () => {
 
   return (
     <div className="py-18 px-6">
+      <ResumeProcessingStatus />
       <div className="flex flex-row gap-6 items-stretch w-full">
         <div className="w-[65%]">
           <div className="border border-black rounded-4xl bg-[#6E62E5] p-8">

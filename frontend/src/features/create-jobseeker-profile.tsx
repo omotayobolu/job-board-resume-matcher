@@ -58,9 +58,8 @@ const JobseekerProfile = () => {
           },
         }
       );
-      if (response.status === 201) {
-        console.log("Jobseeker profile created successfully", response.data);
-        toast.success(response.data.message);
+      if (response.status === 202) {
+        toast.info(response.data.message);
         dispatch(setUser({ ...user, hasprofile: true }));
         navigate("/dashboard");
       } else {
@@ -69,6 +68,7 @@ const JobseekerProfile = () => {
       setIsCreatingProfile(false);
     } catch (error) {
       console.error("Error creating jobseeker profile:", error);
+      toast.error("Could not save your profile. Please try again.");
       setIsCreatingProfile(false);
     }
   };
@@ -192,7 +192,7 @@ const JobseekerProfile = () => {
                       Drop your file here, or browse
                     </p>
                     <span className="text-[#95989F] font-normal text-xs">
-                      Preferably in PDF/Word format
+                      PDF or DOCX, up to 5 MB
                     </span>
                   </>
                 )}
@@ -200,7 +200,7 @@ const JobseekerProfile = () => {
                   id="upload"
                   type="file"
                   className="hidden"
-                  accept=".pdf, .doc, .docx"
+                  accept=".pdf,.docx"
                   {...register("resume", {
                     required: "Please upload your resume.",
                   })}
