@@ -7,6 +7,7 @@ const HttpStatusCode = {
   UNAUTHORIZED: 401,
   FORBIDDEN: 403,
   NOT_FOUND: 404,
+  CONFLICT: 409,
   INTERNAL_SERVER: 500,
 };
 
@@ -15,7 +16,12 @@ class CustomError extends Error {
   readonly httpCode: number;
   readonly isOperational: boolean;
 
-  constructor(status: string, httpCode: number, message: string, isOperational = true) {
+  constructor(
+    status: string,
+    httpCode: number,
+    message: string,
+    isOperational = true,
+  ) {
     super(message);
 
     Object.setPrototypeOf(this, new.target.prototype);
@@ -33,7 +39,7 @@ class APIError extends CustomError {
     status: string,
     httpCode = HttpStatusCode.INTERNAL_SERVER,
     isOperational = false,
-    message = "Internal Server Error"
+    message = "Internal Server Error",
   ) {
     super(status, httpCode, message, isOperational);
   }
