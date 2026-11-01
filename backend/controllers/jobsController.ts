@@ -3,7 +3,7 @@ import { HttpStatusCode, CustomError } from "../utils/error-handler";
 import pool from "../db";
 import { parseJobDescription } from "../utils/parseResume";
 import { embedJob } from "../utils/embed";
-import index from "../config/pinecone";
+import { vectorLiteral } from "../utils/vector";
 import { createJobSchema, idParamSchema, jobStatusSchema, recruiterIdParamSchema } from "../schemas";
 import type { JobDetails, JobRow } from "../types/domain";
 
@@ -56,25 +56,21 @@ async function processEmbeddings(job_id: string, job_details: JobDetails) {
   };
   const embedding = await embedJob(complete_job_details);
 
-  const jobVector = {
-    id: job_id,
-    values: Array.from(embedding),
-    metadata: {
-      type: "job",
-      title: complete_job_details.job_title || "unknown",
-      location: complete_job_details.location || "",
-      work_type: complete_job_details.work_type || "",
-      status: complete_job_details.job_status || "",
-      required_skills: Array.isArray(complete_job_details.required_skills)
-        ? complete_job_details.required_skills.join(", ")
-        : complete_job_details.required_skills || "",
-      responsibilities: Array.isArray(complete_job_details.responsibilities)
-        ? complete_job_details.responsibilities
-        : [],
-    },
-  };
-
-  await index.namespace("job").upsert([jobVector]);
+  await pool.query("UPDATE jobs SET embedding = $1::vector WHERE id = $2", [
+    vectorLiteral(embedding),
+    job_id,
+  ]);
+  await pool.query(
+    `UPDATE applications AS a
+     SET score = 1 - (js.embedding <=> j.embedding)
+     FROM job_seeker AS js, jobs AS j
+     WHERE a.job_id = $1
+       AND j.id = a.job_id
+       AND js.user_id = a.job_seeker_id
+       AND js.embedding IS NOT NULL
+       AND j.embedding IS NOT NULL`,
+    [job_id]
+  );
 }
 
 const getJobs = async (req: Request, res: Response, next: NextFunction) => {
@@ -182,7 +178,10 @@ const getJob = async (req: Request, res: Response, next: NextFunction) => {
       );
     }
 
-    const job = await pool.query<JobRow>("SELECT * FROM jobs WHERE id = $1", [id]);
+    const job = await pool.query<JobRow>(
+      "SELECT id, recruiter_id, job_title, job_description, location, required_skills, job_status, work_type, summary, created_at FROM jobs WHERE id = $1",
+      [id]
+    );
 
     if (job.rowCount === 0) {
       throw new CustomError(
@@ -210,8 +209,8 @@ const updateJobStatus = async (req: Request, res: Response, next: NextFunction) 
     }
 
     const recruiter_id = req.user.id;
-    const existingJob = await pool.query<JobRow>(
-      "SELECT * FROM jobs WHERE id = $1 AND recruiter_id = $2",
+    const existingJob = await pool.query<{ id: string }>(
+      "SELECT id FROM jobs WHERE id = $1 AND recruiter_id = $2",
       [id, recruiter_id]
     );
 
@@ -222,7 +221,7 @@ const updateJobStatus = async (req: Request, res: Response, next: NextFunction) 
     }
 
     const result = await pool.query<JobRow>(
-      "UPDATE jobs SET job_status = $1 WHERE id = $2 RETURNING *",
+      "UPDATE jobs SET job_status = $1 WHERE id = $2 RETURNING id, recruiter_id, job_title, job_description, location, required_skills, job_status, work_type, summary, created_at",
       [job_status, id]
     );
 
@@ -248,8 +247,8 @@ const deleteJob = async (req: Request, res: Response, next: NextFunction) => {
       );
     }
 
-    const result = await pool.query<JobRow>(
-      "DELETE FROM jobs WHERE id = $1 AND recruiter_id = $2 RETURNING *",
+    const result = await pool.query<{ id: string }>(
+      "DELETE FROM jobs WHERE id = $1 AND recruiter_id = $2 RETURNING id",
       [id, recruiter_id]
     );
 

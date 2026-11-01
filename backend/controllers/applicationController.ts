@@ -1,8 +1,6 @@
 import type { Request, Response, NextFunction } from "express";
 import { HttpStatusCode, CustomError } from "../utils/error-handler";
 import pool from "../db";
-import { fetchVector } from "../utils/fetchVector";
-import cosineSimilarity from "../utils/cosineSimilarity";
 import { applySchema, jobIdParamSchema } from "../schemas";
 import type { ApplicationRow } from "../types/domain";
 
@@ -73,12 +71,7 @@ const applyToJob = async (req: Request, res: Response, next: NextFunction) => {
       application,
     });
 
-    processApplication(
-      application.id,
-      jobId,
-      jobSeekerId,
-      recruiterId
-    ).catch((error) => {
+    processApplication(application.id, recruiterId).catch((error) => {
       console.error(
         `Error processing application ${application.id}:`,
         error
@@ -91,38 +84,34 @@ const applyToJob = async (req: Request, res: Response, next: NextFunction) => {
 
 async function processApplication(
   applicationId: string,
-  jobId: string,
-  jobSeekerId: string,
   recruiterId: string
 ) {
   try {
-    // Fetch vectors
-    const [jobSeekerVector, jobVector] = await Promise.all([
-      fetchVector(jobSeekerId, "job_seeker"),
-      fetchVector(jobId, "job"),
-    ]);
+    const result = await pool.query<{ score: number }>(
+      `UPDATE applications AS a
+       SET score = 1 - (js.embedding <=> j.embedding)
+       FROM job_seeker AS js, jobs AS j
+       WHERE a.id = $1
+         AND js.user_id = a.job_seeker_id
+         AND j.id = a.job_id
+         AND js.embedding IS NOT NULL
+         AND j.embedding IS NOT NULL
+       RETURNING a.score`,
+      [applicationId]
+    );
 
-    if (!jobSeekerVector || !jobVector) {
+    if (result.rowCount === 0) {
       console.error(
         `Could not retrieve embeddings for application ${applicationId}`
       );
       return;
     }
 
-    // Calculate match score
-    const matchScore = cosineSimilarity(jobSeekerVector, jobVector);
-
-    // Update application with calculated score
-    await pool.query(`UPDATE applications SET score = $1 WHERE id = $2`, [
-      matchScore,
-      applicationId,
-    ]);
-
     // Update highest match notification
     await updateHighestMatchNotification(recruiterId);
 
     console.log(
-      `Application ${applicationId} processed with score: ${matchScore}`
+      `Application ${applicationId} processed with score: ${result.rows[0]?.score}`
     );
   } catch (error) {
     console.error(

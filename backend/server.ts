@@ -8,6 +8,7 @@ import { errorHandler } from "./utils/error-handler";
 
 import router from "./routes/routes";
 import { requiredEnv } from "./env";
+import { resumeQueue } from "./utils/resumeQueue";
 
 const app = express();
 app.disable("etag");
@@ -36,9 +37,13 @@ app.use(router);
 app.use(errorMiddleware);
 
 const port = process.env.PORT || 3000;
-const server = app.listen(port, () => {
-  console.log(`Server is running on port ${port}...`);
-});
+let server: ReturnType<typeof app.listen> | undefined;
+void resumeQueue.start().then(() => {
+  server = app.listen(port, () => {
+    console.log(`Server is running on port ${port}...`);
+  });
+  server.on("error", shutDownAfterFatalError);
+}).catch(shutDownAfterFatalError);
 
 let shuttingDown = false;
 function shutDownAfterFatalError(error: unknown) {
@@ -53,13 +58,17 @@ function shutDownAfterFatalError(error: unknown) {
   process.exitCode = 1;
 
   const timeout = setTimeout(() => process.exit(1), 10000);
-  server.close(() => {
+  if (server) {
+    server.close(() => {
+      clearTimeout(timeout);
+      process.exit(1);
+    });
+  } else {
     clearTimeout(timeout);
     process.exit(1);
-  });
+  }
 }
 
-server.on("error", shutDownAfterFatalError);
 process.on("uncaughtException", shutDownAfterFatalError);
 
 process.on("unhandledRejection", (reason) => {

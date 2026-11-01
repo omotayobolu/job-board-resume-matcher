@@ -2,7 +2,7 @@ import type { Request, Response, NextFunction } from "express";
 import { HttpStatusCode, CustomError } from "../utils/error-handler";
 import pool from "../db";
 import { embedQuestion } from "../utils/embed";
-import index from "../config/pinecone";
+import { vectorLiteral } from "../utils/vector";
 import { recruiterProfileSchema, recruiterQuestionSchema, jobIdParamSchema, completionSchema } from "../schemas";
 import { requiredEnv } from "../env";
 import type { RecruiterProfileRow } from "../types/domain";
@@ -101,9 +101,10 @@ const queryApplications = async (req: Request, res: Response, next: NextFunction
       );
     }
 
-    const checkJob = await pool.query("SELECT id FROM jobs where id = $1", [
-      jobId,
-    ]);
+    const checkJob = await pool.query(
+      "SELECT id FROM jobs WHERE id = $1 AND recruiter_id = $2",
+      [jobId, recruiterId]
+    );
 
     if (checkJob.rowCount === 0) {
       throw new CustomError(
@@ -114,29 +115,28 @@ const queryApplications = async (req: Request, res: Response, next: NextFunction
       );
     }
 
-    const embeddedQuestion = await embedQuestion(question);
-
-    const results = await index.namespace("job_seeker").query({
-      vector: Array.from(embeddedQuestion),
-      topK: 10,
-      includeMetadata: true,
-    });
-
-    const appliedJobseekersId = await pool.query<{ job_seeker_id: string }>(
-      "SELECT job_seeker_id FROM applications where job_id = $1",
-      [jobId]
+    const embeddedQuestion = vectorLiteral(await embedQuestion(question));
+    const applicants = await pool.query<{
+      name: string;
+      work_experience: unknown;
+    }>(
+      `SELECT COALESCE(NULLIF(js.parsed_resume->>'name', ''), u.full_name, 'Unknown') AS name,
+              js.parsed_resume->'work_experience' AS work_experience
+       FROM applications AS a
+       JOIN job_seeker AS js ON js.user_id = a.job_seeker_id
+       JOIN users AS u ON u.id = a.job_seeker_id
+       WHERE a.job_id = $1
+         AND js.embedding IS NOT NULL
+         AND js.parsed_resume IS NOT NULL
+       ORDER BY js.embedding <=> $2::vector
+       LIMIT 10`,
+      [jobId, embeddedQuestion]
     );
 
-    const appliedIds = appliedJobseekersId.rows.map((row) => row.job_seeker_id);
-
-    const appliedJobseekers = results.matches.filter((r) =>
-      appliedIds.includes(r.id)
-    );
-
-    const context = appliedJobseekers
+    const context = applicants.rows
       .map(
         (r, i) =>
-          `${i + 1}. ${r.metadata?.name ?? "Unknown"}:\n${r.metadata?.job_experience_details ?? ""}`
+          `${i + 1}. ${r.name}:\n${JSON.stringify(r.work_experience ?? [])}`
       )
       .join("\n\n");
 

@@ -1,4 +1,40 @@
+import { z } from "zod";
+import { requiredEnv } from "../env";
 import type { JobDetails, ResumeProfile } from "../types/domain";
+import { vectorLiteral } from "./vector";
+
+const EMBEDDING_MODEL = "text-embedding-3-small";
+const EMBEDDING_DIMENSIONS = 768;
+
+const embeddingResponseSchema = z.object({
+  data: z.array(z.object({
+    embedding: z.array(z.number()),
+  })).length(1),
+});
+
+async function embedText(input: string): Promise<number[]> {
+  if (!input.trim()) throw new Error("Cannot embed empty text");
+
+  const response = await fetch("https://api.openai.com/v1/embeddings", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${requiredEnv("OPENAI_API_KEY")}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: EMBEDDING_MODEL,
+      input,
+      dimensions: EMBEDDING_DIMENSIONS,
+      encoding_format: "float",
+    }),
+  });
+  if (!response.ok) throw new Error(`OpenAI embedding request failed (${response.status})`);
+
+  const data: unknown = await response.json();
+  const embedding = embeddingResponseSchema.parse(data).data[0]!.embedding;
+  vectorLiteral(embedding);
+  return embedding;
+}
 
 function resumeToString(resume: ResumeProfile): string {
   const workDescriptions = resume.work_experience
@@ -6,37 +42,27 @@ function resumeToString(resume: ResumeProfile): string {
       const responsibilities = Array.isArray(job.responsibilities)
         ? job.responsibilities.join("; ")
         : "";
-      return `${job.title || "Unknown Title"} at ${
-        job.company || "Unknown Company"
-      }: ${responsibilities}`;
+      return `${job.title || "Unknown Title"} at ${job.company || "Unknown Company"}
+        ${job.location} ${job.start_date}–${job.end_date}: ${responsibilities};
+        Achievements: ${job.achievements.join("; ")}`;
     })
     .join("\n");
 
   return [
-    `Name: ${resume.name || "Unknown"}`,
+    `Professional Summary: ${resume.professional_summary}`,
+    `Location: ${resume.location}`,
     `Years of Experience: ${resume.years_of_experience || "Unknown"}`,
     `Work Experience:\n${workDescriptions}`,
     `Skills: ${resume.skills || "None"}`,
     `Certifications: ${resume.certifications || "None"}`,
     `Education: ${resume.education || "None"}`,
+    `Projects: ${resume.projects.join("; ")}`,
+    `Languages: ${resume.languages.join("; ")}`,
+    `Additional Sections: ${resume.additional_sections.map((section) => `${section.heading}: ${section.content}`).join("; ")}`,
   ].join("\n");
 }
 
-const embedResume = async (parsedResume: ResumeProfile) => {
-  const { pipeline } = await import("@xenova/transformers");
-  const embedder = await pipeline(
-    "feature-extraction",
-    "Xenova/all-mpnet-base-v2"
-  );
-
-  const resumeString = resumeToString(parsedResume);
-  const embeddingResult = await embedder(resumeString, {
-    pooling: "mean",
-    normalize: true,
-  });
-
-  return embeddingResult.data;
-};
+const embedResume = (parsedResume: ResumeProfile) => embedText(resumeToString(parsedResume));
 
 function jobToString(job: JobDetails): string {
   const responsibilities = Array.isArray(job.responsibilities)
@@ -58,34 +84,8 @@ function jobToString(job: JobDetails): string {
   `;
 }
 
-const embedJob = async (job_details: JobDetails) => {
-  const { pipeline } = await import("@xenova/transformers");
-  const embedder = await pipeline(
-    "feature-extraction",
-    "Xenova/all-mpnet-base-v2"
-  );
+const embedJob = (job_details: JobDetails) => embedText(jobToString(job_details));
 
-  const jobString = jobToString(job_details);
-  const embeddingResult = await embedder(jobString, {
-    pooling: "mean",
-    normalize: true,
-  });
+const embedQuestion = (question: string) => embedText(question);
 
-  return embeddingResult.data;
-};
-
-const embedQuestion = async (question: string) => {
-  const { pipeline } = await import("@xenova/transformers");
-  const embedder = await pipeline(
-    "feature-extraction",
-    "Xenova/all-mpnet-base-v2"
-  );
-  const questionEmbedding = await embedder(question, {
-    pooling: "mean",
-    normalize: true,
-  });
-
-  return questionEmbedding.data;
-};
-
-export { embedResume,embedJob,embedQuestion };
+export { embedResume, embedJob, embedQuestion };

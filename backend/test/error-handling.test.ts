@@ -124,8 +124,8 @@ test("errors after headers are sent pass to Express", () => {
 
 test("resume parsing propagates upstream failures with their cause", async () => {
   const original = global.fetch;
-  const originalKey = process.env.OPENROUTER_API_KEY;
-  process.env.OPENROUTER_API_KEY = "test-key";
+  const originalKey = process.env.OPENAI_API_KEY;
+  process.env.OPENAI_API_KEY = "test-key";
   const upstream = new Error("network unavailable");
   global.fetch = async () => { throw upstream; };
   try {
@@ -137,7 +137,7 @@ test("resume parsing propagates upstream failures with their cause", async () =>
     });
   } finally {
     global.fetch = original;
-    if (originalKey === undefined) delete process.env.OPENROUTER_API_KEY;
-    else process.env.OPENROUTER_API_KEY = originalKey;
+    if (originalKey === undefined) delete process.env.OPENAI_API_KEY;
+    else process.env.OPENAI_API_KEY = originalKey;
   }
 });

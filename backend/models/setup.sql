@@ -3,6 +3,8 @@
 
 BEGIN;
 
+CREATE EXTENSION IF NOT EXISTS vector;
+
 DO $$
 BEGIN
   IF NOT EXISTS (
@@ -42,7 +44,14 @@ CREATE TABLE IF NOT EXISTS public.job_seeker (
   job_title varchar,
   location varchar,
   remote_preference text,
-  resume_url text,
+  resume_s3_key text,
+  resume_filename text,
+  embedding vector(768),
+  parsed_resume jsonb,
+  resume_processing_status text NOT NULL DEFAULT 'pending'
+    CHECK (resume_processing_status IN ('pending', 'processing', 'completed', 'failed')),
+  resume_processing_token uuid,
+  resume_job_id uuid,
   created_at timestamp without time zone
 );
 
@@ -56,7 +65,8 @@ CREATE TABLE IF NOT EXISTS public.jobs (
   job_status varchar,
   created_at timestamp without time zone,
   work_type varchar(10),
-  summary text
+  summary text,
+  embedding vector(768)
 );
 
 CREATE TABLE IF NOT EXISTS public.applications (
@@ -70,6 +80,9 @@ CREATE TABLE IF NOT EXISTS public.applications (
 
 CREATE UNIQUE INDEX IF NOT EXISTS applications_job_seeker_id_job_id_idx
   ON public.applications (job_seeker_id, job_id);
+
+CREATE INDEX IF NOT EXISTS applications_job_id_idx
+  ON public.applications (job_id);
 
 CREATE TABLE IF NOT EXISTS public.notifications (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

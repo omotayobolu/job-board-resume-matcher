@@ -45,7 +45,10 @@ export interface JobSeekerProfileRow {
   job_title: string;
   location: string;
   remote_preference: string;
-  resume_url: string;
+  resume_s3_key: string | null;
+  resume_filename: string | null;
+  resume_processing_status: "pending" | "processing" | "completed" | "failed";
+  resume_job_id: string | null;
   created_at: Date;
 }
 
@@ -61,13 +64,28 @@ export interface JobDetails {
 
 export interface ResumeProfile {
   name: string;
+  email: string;
+  phone: string;
+  location: string;
+  professional_summary: string;
   years_of_experience: string;
   work_experience: Array<{
     title: string;
     company: string;
+    location: string;
+    start_date: string;
+    end_date: string;
     responsibilities: string[];
+    achievements: string[];
   }>;
   skills: string;
   certifications: string;
   education: string;
+  projects: string[];
+  languages: string[];
+  links: string[];
+  additional_sections: Array<{
+    heading: string;
+    content: string;
+  }>;
 }

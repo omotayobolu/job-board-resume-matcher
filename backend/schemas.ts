@@ -55,15 +55,30 @@ export const recruiterIdParamSchema = z.object({
 
 export const resumeOutputSchema = z.object({
   name: z.string().default(""),
+  email: z.string().default(""),
+  phone: z.string().default(""),
+  location: z.string().default(""),
+  professional_summary: z.string().default(""),
   years_of_experience: z.string().default(""),
   work_experience: z.array(z.object({
     title: z.string().default(""),
     company: z.string().default(""),
+    location: z.string().default(""),
+    start_date: z.string().default(""),
+    end_date: z.string().default(""),
     responsibilities: z.array(z.string()).default([]),
+    achievements: z.array(z.string()).default([]),
   })).default([]),
   skills: z.string().default(""),
   certifications: z.string().default(""),
   education: z.string().default(""),
+  projects: z.array(z.string()).default([]),
+  languages: z.array(z.string()).default([]),
+  links: z.array(z.string()).default([]),
+  additional_sections: z.array(z.object({
+    heading: z.string(),
+    content: z.string(),
+  })).default([]),
 });
 
 export const jobOutputSchema = z.object({
@@ -73,6 +88,7 @@ export const jobOutputSchema = z.object({
 
 export const completionSchema = z.object({
   choices: z.array(z.object({
+    finish_reason: z.string().nullable().optional(),
     message: z.object({ content: z.string() }),
   })).min(1),
 });
