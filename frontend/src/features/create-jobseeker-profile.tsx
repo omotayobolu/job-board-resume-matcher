@@ -12,6 +12,7 @@ import {
 import type { RootState } from "@/store/store";
 import { setUser } from "@/store/userSlice";
 import { axiosInstance } from "@/lib/axios-instance";
+import { getApiErrorMessage } from "@/lib/api-error";
 import { FolderAdd } from "iconsax-reactjs";
 import { useState } from "react";
 import { Controller, useForm } from "react-hook-form";
@@ -42,33 +43,34 @@ const JobseekerProfile = () => {
   });
 
   const onsubmit = async (data: JobseekerProfileForm) => {
+    const resume = data.resume?.[0];
+    if (!resume) {
+      toast.error("Please upload your resume.");
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("job_title", data.jobTitle);
+    formData.append("location", data.location);
+    formData.append("remote_preference", data.jobPreference);
+    formData.append("resume", resume);
+
     setIsCreatingProfile(true);
     try {
       const response = await axiosInstance.post(
         "/job-seeker/create-profile",
-        {
-          job_title: data.jobTitle,
-          location: data.location,
-          remote_preference: data.jobPreference,
-          resume: data.resume ? data.resume[0] : null,
-        },
-        {
-          headers: {
-            "Content-Type": "multipart/form-data",
-          },
-        }
+        formData
       );
       if (response.status === 202) {
         toast.info(response.data.message);
         dispatch(setUser({ ...user, hasprofile: true }));
         navigate("/dashboard");
       } else {
-        console.error("Failed to create jobseeker profile");
+        toast.error("Could not save your profile. Please try again.");
       }
-      setIsCreatingProfile(false);
     } catch (error) {
-      console.error("Error creating jobseeker profile:", error);
-      toast.error("Could not save your profile. Please try again.");
+      toast.error(getApiErrorMessage(error));
+    } finally {
       setIsCreatingProfile(false);
     }
   };
@@ -203,6 +205,10 @@ const JobseekerProfile = () => {
                   accept=".pdf,.docx"
                   {...register("resume", {
                     required: "Please upload your resume.",
+                    validate: (files) =>
+                      !files?.[0] ||
+                      files[0].size <= 5 * 1024 * 1024 ||
+                      "Your resume must be 5 MB or smaller.",
                   })}
                 />
               </label>
@@ -217,6 +223,7 @@ const JobseekerProfile = () => {
             <Button
               variant={iscreatingProfile ? "ghost" : "primary"}
               className="py-8 px-16 text-xl"
+              disabled={iscreatingProfile}
             >
               {iscreatingProfile
                 ? "Creating Profile..."
