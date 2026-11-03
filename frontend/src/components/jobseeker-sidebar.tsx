@@ -1,5 +1,5 @@
 import { NavLink } from "react-router";
-import { Element4, LogoutCurve, Sms } from "iconsax-reactjs";
+import { Element4, LogoutCurve, Profile, Sms } from "iconsax-reactjs";
 import { useLogout } from "@/hooks/use-logout";
 
 const JobseekerSidebar = () => {
@@ -24,6 +24,21 @@ const JobseekerSidebar = () => {
                 } text-lg`}
               >
                 Dashboard
+              </p>
+            </div>
+          )}
+        </NavLink>
+
+        <NavLink to="/dashboard/profile" end>
+          {({ isActive }) => (
+            <div className="flex items-center gap-3 mt-4 py-3">
+              <Profile
+                size="22"
+                variant="Bold"
+                color={isActive ? "rgba(110,98,229,1)" : "rgba(41,45,50,1)"}
+              />
+              <p className={`${isActive ? "text-purple font-bold" : "text-black font-normal"} text-lg`}>
+                Profile
               </p>
             </div>
           )}

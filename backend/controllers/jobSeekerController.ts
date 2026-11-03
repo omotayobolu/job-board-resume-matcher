@@ -146,6 +146,28 @@ const createProfile = async (
   }
 };
 
+type ResumeStatusRow = Pick<JobSeekerProfileRow, "id" | "resume_job_id" | "resume_processing_status">;
+
+async function resolveResumeStatus(profile: ResumeStatusRow): Promise<JobSeekerProfileRow["resume_processing_status"]> {
+  const jobState = profile.resume_job_id ? await resumeQueue.jobState(profile.resume_job_id) : null;
+  let status = profile.resume_processing_status;
+  if (status !== "completed") {
+    if (jobState === "failed") status = "failed";
+    else if (jobState === "completed") status = "completed";
+    else if (jobState === "created" || jobState === "retry") status = "pending";
+    else if (jobState === "active") status = "processing";
+  }
+
+  if (status !== profile.resume_processing_status && (status === "failed" || status === "completed")) {
+    await pool.query(
+      `UPDATE job_seeker SET resume_processing_status = $1, resume_processing_token = NULL
+       WHERE id = $2 AND resume_job_id = $3`,
+      [status, profile.id, profile.resume_job_id],
+    );
+  }
+  return status;
+}
+
 const getProfileStatus = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const result = await pool.query<Pick<JobSeekerProfileRow, "id" | "resume_processing_status" | "resume_filename" | "resume_job_id"> & { can_retry: boolean }>(
@@ -156,26 +178,74 @@ const getProfileStatus = async (req: Request, res: Response, next: NextFunction)
     if (!profile) {
       throw new CustomError("NOT FOUND", HttpStatusCode.NOT_FOUND, "Profile not found", true);
     }
-    const jobState = profile.resume_job_id ? await resumeQueue.jobState(profile.resume_job_id) : null;
-    let status = profile.resume_processing_status;
-    if (status !== "completed") {
-      if (jobState === "failed") status = "failed";
-      else if (jobState === "completed") status = "completed";
-      else if (jobState === "created" || jobState === "retry") status = "pending";
-      else if (jobState === "active") status = "processing";
-    }
-
-    if (status !== profile.resume_processing_status && (status === "failed" || status === "completed")) {
-      await pool.query(
-        `UPDATE job_seeker SET resume_processing_status = $1, resume_processing_token = NULL
-         WHERE id = $2 AND resume_job_id = $3`,
-        [status, profile.id, profile.resume_job_id],
-      );
-    }
+    const status = await resolveResumeStatus(profile);
     res.status(HttpStatusCode.OK).json({
       resume_processing_status: status,
       resume_filename: profile.resume_filename,
       can_retry: profile.can_retry,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+type ProfilePageRow = Pick<
+  JobSeekerProfileRow,
+  "id" | "job_title" | "location" | "remote_preference" |
+  "resume_filename" | "resume_processing_status" | "resume_job_id" | "created_at"
+> & {
+  full_name: string | null;
+  email: string | null;
+  professional_summary: string | null;
+  skills: string | null;
+  years_of_experience: string | null;
+  education: string | null;
+  certifications: string | null;
+  has_parsed_resume: boolean;
+};
+
+const getProfile = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const result = await pool.query<ProfilePageRow>(
+      `SELECT js.id, js.job_title, js.location, js.remote_preference,
+              js.resume_filename, js.resume_processing_status, js.resume_job_id, js.created_at,
+              u.full_name, u.email,
+              js.parsed_resume ->> 'professional_summary' AS professional_summary,
+              js.parsed_resume ->> 'skills' AS skills,
+              js.parsed_resume ->> 'years_of_experience' AS years_of_experience,
+              js.parsed_resume ->> 'education' AS education,
+              js.parsed_resume ->> 'certifications' AS certifications,
+              js.parsed_resume IS NOT NULL AS has_parsed_resume
+       FROM job_seeker AS js
+       JOIN users AS u ON u.id = js.user_id
+       WHERE js.user_id = $1`,
+      [req.user.id],
+    );
+    const profile = result.rows[0];
+    if (!profile) {
+      throw new CustomError("NOT FOUND", HttpStatusCode.NOT_FOUND, "Profile not found", true);
+    }
+    const status = await resolveResumeStatus(profile);
+
+    res.status(HttpStatusCode.OK).json({
+      profile: {
+        id: profile.id,
+        full_name: profile.full_name,
+        email: profile.email,
+        job_title: profile.job_title,
+        location: profile.location,
+        remote_preference: profile.remote_preference,
+        resume_filename: profile.resume_filename,
+        resume_processing_status: status,
+        created_at: profile.created_at,
+        parsed_resume: profile.has_parsed_resume ? {
+          professional_summary: profile.professional_summary,
+          skills: profile.skills,
+          years_of_experience: profile.years_of_experience,
+          education: profile.education,
+          certifications: profile.certifications,
+        } : null,
+      },
     });
   } catch (error) {
     next(error);
@@ -216,4 +286,4 @@ const retryProfileProcessing = async (req: Request, res: Response, next: NextFun
   }
 };
 
-export { createProfile, getProfileStatus, retryProfileProcessing };
+export { createProfile, getProfile, getProfileStatus, retryProfileProcessing };
