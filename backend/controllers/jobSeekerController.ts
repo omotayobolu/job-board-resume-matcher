@@ -1,8 +1,9 @@
 import type { Request, Response, NextFunction } from "express";
 import { HttpStatusCode, CustomError } from "../utils/error-handler";
 import pool from "../db";
-import { DeleteObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
-import { randomUUID } from "node:crypto";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { GetObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
+import { validateResumeFile, uploadResume } from "../utils/resumeUpload";
 import { s3 } from "../config/s3";
 import { requiredEnv } from "../env";
 import { jobSeekerProfileSchema } from "../schemas";
@@ -29,28 +30,7 @@ const createProfile = async (
         true,
       );
     }
-    if (!req.file) {
-      throw new CustomError(
-        "BAD REQUEST",
-        HttpStatusCode.BAD_REQUEST,
-        "Job title, location, remote preference, and resume are required.",
-        true,
-      );
-    }
-    const resumeFile = req.file;
-    if (
-      ![
-        "application/pdf",
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      ].includes(resumeFile.mimetype)
-    ) {
-      throw new CustomError(
-        "BAD REQUEST",
-        HttpStatusCode.BAD_REQUEST,
-        "Resume must be a PDF or DOCX file.",
-        true,
-      );
-    }
+    const resumeFile = validateResumeFile(req.file, "Job title, location, remote preference, and resume are required.");
 
     const userCheck = await pool.query<{ id: string; role: string | null }>(
       "SELECT id, role FROM users WHERE id = $1",
@@ -87,15 +67,7 @@ const createProfile = async (
         true,
       );
     }
-    const bucket = requiredEnv("S3_BUCKET_NAME");
-    const extension = resumeFile.mimetype === "application/pdf" ? "pdf" : "docx";
-    const key = `resumes/${user_id}/${randomUUID()}.${extension}`;
-    await s3.send(new PutObjectCommand({
-      Bucket: bucket,
-      Key: key,
-      Body: resumeFile.buffer,
-      ContentType: resumeFile.mimetype,
-    }));
+    const key = await uploadResume(resumeFile, user_id);
     uploadedKey = key;
     const jobSeeker = await pool.transaction(async (client) => {
       const result = await client.query<JobSeekerProfileRow>(
@@ -105,21 +77,36 @@ const createProfile = async (
          VALUES ($1, $2, $3, $4, $5, $6, 'pending', NOW())
          RETURNING id, user_id, job_title, location, remote_preference,
                    resume_s3_key, resume_filename, resume_processing_status, created_at`,
-        [user_id, job_title, location, remote_preference, key, resumeFile.originalname],
+        [
+          user_id,
+          job_title,
+          location,
+          remote_preference,
+          key,
+          resumeFile.originalname,
+        ],
       );
       const profile = result.rows[0];
       if (!profile) throw new Error("Profile insert returned no row");
 
-      await client.query("UPDATE users SET hasprofile = true WHERE id = $1", [user_id]);
+      await client.query("UPDATE users SET hasprofile = true WHERE id = $1", [
+        user_id,
+      ]);
       const jobId = await resumeQueue.enqueue(client, profile.id);
-      await client.query("UPDATE job_seeker SET resume_job_id = $1 WHERE id = $2", [jobId, profile.id]);
+      await client.query(
+        "UPDATE job_seeker SET resume_job_id = $1 WHERE id = $2",
+        [jobId, profile.id],
+      );
       return { ...profile, resume_job_id: jobId };
     });
     profileSaved = true;
 
     res
       .status(HttpStatusCode.ACCEPTED)
-      .json({ jobSeeker, message: "Profile saved. Your resume is processing." });
+      .json({
+        jobSeeker,
+        message: "Profile saved. Your resume is processing.",
+      });
   } catch (error) {
     if (uploadedKey && !profileSaved) {
       try {
@@ -128,28 +115,215 @@ const createProfile = async (
           [uploadedKey],
         );
         if (saved.rowCount === 0) {
-          await s3.send(new DeleteObjectCommand({
-            Bucket: requiredEnv("S3_BUCKET_NAME"),
-            Key: uploadedKey,
-          }));
+          await s3.send(
+            new DeleteObjectCommand({
+              Bucket: requiredEnv("S3_BUCKET_NAME"),
+              Key: uploadedKey,
+            }),
+          );
         }
       } catch (cleanupError) {
         errorHandler.handleError(cleanupError);
       }
     }
     if (error instanceof Error && "code" in error && error.code === "23505") {
-      return next(new CustomError(
-        "CONFLICT", HttpStatusCode.CONFLICT, "You already have a profile", true,
-      ));
+      return next(
+        new CustomError(
+          "CONFLICT",
+          HttpStatusCode.CONFLICT,
+          "You already have a profile",
+          true,
+        ),
+      );
     }
     next(error);
   }
 };
 
-type ResumeStatusRow = Pick<JobSeekerProfileRow, "id" | "resume_job_id" | "resume_processing_status">;
+const getResumeContent = async (req: Request, res: Response, next: NextFunction) => {
+  res.setHeader("Cache-Control", "no-store");
+  try {
+    if (req.user.role !== "job_seeker") {
+      throw new CustomError("FORBIDDEN", HttpStatusCode.FORBIDDEN, "Only job seekers can preview their resume.", true);
+    }
+    const result = await pool.query<Pick<JobSeekerProfileRow, "resume_s3_key">>(
+      "SELECT resume_s3_key FROM job_seeker WHERE user_id = $1", [req.user.id],
+    );
+    const key = result.rows[0]?.resume_s3_key;
+    if (!key) throw new CustomError("NOT FOUND", HttpStatusCode.NOT_FOUND, "Resume not found", true);
+    const object = await s3.send(new GetObjectCommand({ Bucket: requiredEnv("S3_BUCKET_NAME"), Key: key }));
+    if (!object.Body) throw new CustomError("NOT FOUND", HttpStatusCode.NOT_FOUND, "Resume not found", true);
+    res.setHeader("Content-Type", key.toLowerCase().endsWith(".pdf") ? "application/pdf"
+      : "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.status(HttpStatusCode.OK).send(Buffer.from(await object.Body.transformToByteArray()));
+  } catch (error) {
+    next(error);
+  }
+};
 
-async function resolveResumeStatus(profile: ResumeStatusRow): Promise<JobSeekerProfileRow["resume_processing_status"]> {
-  const jobState = profile.resume_job_id ? await resumeQueue.jobState(profile.resume_job_id) : null;
+const getResumePreview = async (req: Request, res: Response, next: NextFunction) => {
+  res.setHeader("Cache-Control", "no-store");
+  try {
+    if (req.user.role !== "job_seeker") {
+      throw new CustomError("FORBIDDEN", HttpStatusCode.FORBIDDEN, "Only job seekers can preview their resume.", true);
+    }
+    const result = await pool.query<Pick<JobSeekerProfileRow, "resume_s3_key" | "resume_filename">>(
+      "SELECT resume_s3_key, resume_filename FROM job_seeker WHERE user_id = $1",
+      [req.user.id],
+    );
+    const profile = result.rows[0];
+    if (!profile?.resume_s3_key) {
+      throw new CustomError("NOT FOUND", HttpStatusCode.NOT_FOUND, "Resume not found", true);
+    }
+    const isPdf = profile.resume_s3_key.toLowerCase().endsWith(".pdf");
+    const filename = profile.resume_filename || (isPdf ? "resume.pdf" : "resume.docx");
+    // Encode the stored filename so it cannot inject response headers.
+    const encodedFilename = encodeURIComponent(filename).replace(/[!'()*]/g,
+      (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`);
+    const url = await getSignedUrl(s3, new GetObjectCommand({
+      Bucket: requiredEnv("S3_BUCKET_NAME"),
+      Key: profile.resume_s3_key,
+      ResponseContentType: isPdf ? "application/pdf"
+        : "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      ResponseContentDisposition: `${isPdf ? "inline" : "attachment"}; filename*=UTF-8''${encodedFilename}`,
+      ResponseCacheControl: "no-store",
+    }), { expiresIn: 300 });
+    res.status(HttpStatusCode.OK).json({ url, filename, content_type: isPdf ? "application/pdf"
+      : "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const replaceResume = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  let uploadedKey: string | null = null;
+  let profileSaved = false;
+  try {
+    const user_id = req.user.id;
+    if (!user_id) {
+      throw new CustomError(
+        "BAD REQUEST",
+        HttpStatusCode.BAD_REQUEST,
+        "User ID is required.",
+        true,
+      );
+    }
+    const resumeFile = validateResumeFile(req.file, "Resume is required.");
+
+    const userCheck = await pool.query<{ id: string; role: string | null }>(
+      "SELECT id, role FROM users WHERE id = $1",
+      [user_id],
+    );
+    const user = userCheck.rows[0];
+    if (!user) {
+      throw new CustomError(
+        "NOT FOUND",
+        HttpStatusCode.NOT_FOUND,
+        "User not found",
+        true,
+      );
+    }
+    if (user.role !== "job_seeker") {
+      throw new CustomError(
+        "FORBIDDEN",
+        HttpStatusCode.FORBIDDEN,
+        "Only job seekers can replace a resume.",
+        true,
+      );
+    }
+
+    const existingProfile = await pool.query<Pick<JobSeekerProfileRow, "id">>(
+      "SELECT id FROM job_seeker WHERE user_id = $1 LIMIT 1",
+      [user_id],
+    );
+    if (!existingProfile.rows[0]) {
+      throw new CustomError("NOT FOUND", HttpStatusCode.NOT_FOUND, "Profile not found", true);
+    }
+
+    const bucket = requiredEnv("S3_BUCKET_NAME");
+    const key = await uploadResume(resumeFile, user_id);
+    uploadedKey = key;
+    const oldKey = await pool.transaction(async (client) => {
+      const result = await client.query<
+        Pick<JobSeekerProfileRow, "id" | "resume_s3_key" | "resume_processing_status">
+      >(
+        "SELECT id, resume_s3_key, resume_processing_status FROM job_seeker WHERE user_id = $1 FOR UPDATE",
+        [user_id],
+      );
+      const profile = result.rows[0];
+      if (!profile) {
+        throw new CustomError(
+          "NOT FOUND",
+          HttpStatusCode.NOT_FOUND,
+          "Profile not found",
+          true,
+        );
+      }
+      if (profile.resume_processing_status === "pending" || profile.resume_processing_status === "processing") {
+        throw new CustomError(
+          "CONFLICT", HttpStatusCode.CONFLICT,
+          "Resume processing is already in progress. Please wait before replacing it.", true,
+        );
+      }
+      await client.query(
+        `UPDATE job_seeker
+         SET resume_s3_key = $1, resume_filename = $2,
+             resume_processing_status = 'pending', resume_processing_token = NULL,
+             parsed_resume = NULL, embedding = NULL
+         WHERE id = $3`,
+        [key, resumeFile.originalname, profile.id],
+      );
+      const jobId = await resumeQueue.enqueue(client, profile.id);
+      await client.query(
+        "UPDATE job_seeker SET resume_job_id = $1 WHERE id = $2",
+        [jobId, profile.id],
+      );
+      return profile.resume_s3_key;
+    });
+    profileSaved = true;
+    if (oldKey) {
+      try {
+        await s3.send(new DeleteObjectCommand({ Bucket: bucket, Key: oldKey }));
+      } catch (cleanupError) {
+        errorHandler.handleError(cleanupError);
+      }
+    }
+    res
+      .status(HttpStatusCode.ACCEPTED)
+      .json({ resume_processing_status: "pending" });
+  } catch (error) {
+    if (uploadedKey && !profileSaved) {
+      try {
+        await s3.send(
+          new DeleteObjectCommand({
+            Bucket: requiredEnv("S3_BUCKET_NAME"),
+            Key: uploadedKey,
+          }),
+        );
+      } catch (cleanupError) {
+        errorHandler.handleError(cleanupError);
+      }
+    }
+    next(error);
+  }
+};
+
+type ResumeStatusRow = Pick<
+  JobSeekerProfileRow,
+  "id" | "resume_job_id" | "resume_processing_status"
+>;
+
+async function resolveResumeStatus(
+  profile: ResumeStatusRow,
+): Promise<JobSeekerProfileRow["resume_processing_status"]> {
+  const jobState = profile.resume_job_id
+    ? await resumeQueue.jobState(profile.resume_job_id)
+    : null;
   let status = profile.resume_processing_status;
   if (status !== "completed") {
     if (jobState === "failed") status = "failed";
@@ -158,7 +332,10 @@ async function resolveResumeStatus(profile: ResumeStatusRow): Promise<JobSeekerP
     else if (jobState === "active") status = "processing";
   }
 
-  if (status !== profile.resume_processing_status && (status === "failed" || status === "completed")) {
+  if (
+    status !== profile.resume_processing_status &&
+    (status === "failed" || status === "completed")
+  ) {
     await pool.query(
       `UPDATE job_seeker SET resume_processing_status = $1, resume_processing_token = NULL
        WHERE id = $2 AND resume_job_id = $3`,
@@ -168,15 +345,29 @@ async function resolveResumeStatus(profile: ResumeStatusRow): Promise<JobSeekerP
   return status;
 }
 
-const getProfileStatus = async (req: Request, res: Response, next: NextFunction) => {
+const getProfileStatus = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
-    const result = await pool.query<Pick<JobSeekerProfileRow, "id" | "resume_processing_status" | "resume_filename" | "resume_job_id"> & { can_retry: boolean }>(
+    const result = await pool.query<
+      Pick<
+        JobSeekerProfileRow,
+        "id" | "resume_processing_status" | "resume_filename" | "resume_job_id"
+      > & { can_retry: boolean }
+    >(
       "SELECT id, resume_processing_status, resume_filename, resume_job_id, (resume_s3_key IS NOT NULL OR parsed_resume IS NOT NULL) AS can_retry FROM job_seeker WHERE user_id = $1",
       [req.user.id],
     );
     const profile = result.rows[0];
     if (!profile) {
-      throw new CustomError("NOT FOUND", HttpStatusCode.NOT_FOUND, "Profile not found", true);
+      throw new CustomError(
+        "NOT FOUND",
+        HttpStatusCode.NOT_FOUND,
+        "Profile not found",
+        true,
+      );
     }
     const status = await resolveResumeStatus(profile);
     res.status(HttpStatusCode.OK).json({
@@ -191,8 +382,14 @@ const getProfileStatus = async (req: Request, res: Response, next: NextFunction)
 
 type ProfilePageRow = Pick<
   JobSeekerProfileRow,
-  "id" | "job_title" | "location" | "remote_preference" |
-  "resume_filename" | "resume_processing_status" | "resume_job_id" | "created_at"
+  | "id"
+  | "job_title"
+  | "location"
+  | "remote_preference"
+  | "resume_filename"
+  | "resume_processing_status"
+  | "resume_job_id"
+  | "created_at"
 > & {
   full_name: string | null;
   email: string | null;
@@ -223,7 +420,12 @@ const getProfile = async (req: Request, res: Response, next: NextFunction) => {
     );
     const profile = result.rows[0];
     if (!profile) {
-      throw new CustomError("NOT FOUND", HttpStatusCode.NOT_FOUND, "Profile not found", true);
+      throw new CustomError(
+        "NOT FOUND",
+        HttpStatusCode.NOT_FOUND,
+        "Profile not found",
+        true,
+      );
     }
     const status = await resolveResumeStatus(profile);
 
@@ -238,13 +440,15 @@ const getProfile = async (req: Request, res: Response, next: NextFunction) => {
         resume_filename: profile.resume_filename,
         resume_processing_status: status,
         created_at: profile.created_at,
-        parsed_resume: profile.has_parsed_resume ? {
-          professional_summary: profile.professional_summary,
-          skills: profile.skills,
-          years_of_experience: profile.years_of_experience,
-          education: profile.education,
-          certifications: profile.certifications,
-        } : null,
+        parsed_resume: profile.has_parsed_resume
+          ? {
+              professional_summary: profile.professional_summary,
+              skills: profile.skills,
+              years_of_experience: profile.years_of_experience,
+              education: profile.education,
+              certifications: profile.certifications,
+            }
+          : null,
       },
     });
   } catch (error) {
@@ -252,21 +456,40 @@ const getProfile = async (req: Request, res: Response, next: NextFunction) => {
   }
 };
 
-const retryProfileProcessing = async (req: Request, res: Response, next: NextFunction) => {
+const retryProfileProcessing = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
     await pool.transaction(async (client) => {
-      const result = await client.query<Pick<JobSeekerProfileRow, "id" | "resume_job_id" | "resume_processing_status" | "resume_s3_key"> & { has_parsed_resume: boolean }>(
+      const result = await client.query<
+        Pick<
+          JobSeekerProfileRow,
+          "id" | "resume_job_id" | "resume_processing_status" | "resume_s3_key"
+        > & { has_parsed_resume: boolean }
+      >(
         `SELECT id, resume_job_id, resume_processing_status, resume_s3_key,
                 parsed_resume IS NOT NULL AS has_parsed_resume
          FROM job_seeker WHERE user_id = $1 FOR UPDATE`,
         [req.user.id],
       );
       const profile = result.rows[0];
-      const jobState = profile?.resume_job_id ? await resumeQueue.jobState(profile.resume_job_id) : null;
-      if ((!profile?.resume_s3_key && !profile?.has_parsed_resume)
-        || profile?.resume_processing_status === "completed"
-        || (jobState !== "failed" && !(jobState === null && profile.resume_processing_status === "failed"))) {
-        throw new CustomError("CONFLICT", HttpStatusCode.CONFLICT, "No failed resume processing to retry", true);
+      const jobState = profile?.resume_job_id
+        ? await resumeQueue.jobState(profile.resume_job_id)
+        : null;
+      if (
+        (!profile?.resume_s3_key && !profile?.has_parsed_resume) ||
+        profile?.resume_processing_status === "completed" ||
+        (jobState !== "failed" &&
+          !(jobState === null && profile.resume_processing_status === "failed"))
+      ) {
+        throw new CustomError(
+          "CONFLICT",
+          HttpStatusCode.CONFLICT,
+          "No failed resume processing to retry",
+          true,
+        );
       }
       const jobId = await resumeQueue.enqueue(client, profile.id);
       await client.query(
@@ -286,4 +509,12 @@ const retryProfileProcessing = async (req: Request, res: Response, next: NextFun
   }
 };
 
-export { createProfile, getProfile, getProfileStatus, retryProfileProcessing };
+export {
+  getResumeContent,
+  getResumePreview,
+  replaceResume,
+  createProfile,
+  getProfile,
+  getProfileStatus,
+  retryProfileProcessing,
+};
