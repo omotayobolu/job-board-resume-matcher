@@ -53,6 +53,16 @@ export const recruiterIdParamSchema = z.object({
   recruiterId: z.string().uuid(),
 });
 
+const pageNumber = z.union([
+  z.string().regex(/^\d+$/),
+  z.number().int().nonnegative(),
+]);
+
+export const recommendedJobsQuerySchema = z.object({
+  limit: pageNumber.optional(),
+  offset: pageNumber.optional(),
+});
+
 export const resumeOutputSchema = z.object({
   name: z.string().default(""),
   email: z.string().default(""),

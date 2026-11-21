@@ -68,4 +68,16 @@ function isRecruiter(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
-export { authenticateToken,isRecruiter };
+function isJobSeeker(req: Request, res: Response, next: NextFunction) {
+  if (req.user.role !== "job_seeker") {
+    throw new CustomError(
+      "FORBIDDEN",
+      HttpStatusCode.FORBIDDEN,
+      "Access denied. Only job seekers can perform this action.",
+      true
+    );
+  }
+  next();
+}
+
+export { authenticateToken, isRecruiter, isJobSeeker };
