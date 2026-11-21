@@ -24,7 +24,6 @@ const JobseekerDashboard = () => {
     queryKey: ["jobs"],
     queryFn: () => fetchJobs(),
   });
-  console.log(jobs);
   const [selectedJob, setSelectedJob] = useState(jobs ? jobs[0] : null);
   const [applying, setApplying] = useState(false);
 
