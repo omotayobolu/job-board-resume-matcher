@@ -6,6 +6,7 @@ import { useState, type JSX } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { axiosInstance } from "@/lib/axios-instance";
 import { toast } from "sonner";
+import RecommendedJobs from "./recommended-jobs";
 import ResumeProcessingStatus from "./resume-processing-status";
 
 const formatRelativeTime = (dateString: string): string => {
@@ -78,28 +79,25 @@ const JobseekerDashboard = () => {
     }
   };
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-screen">
-        <p className="text-lg text-[#4A4A4A]">Loading jobs...</p>
-      </div>
-    );
-  }
-
-  if (isError) {
-    return (
-      <div className="flex items-center justify-center h-screen">
-        <p className="text-lg text-[#CC2424]">
-          Error loading jobs:{" "}
-          {error instanceof Error ? error.message : "Unknown error"}
-        </p>
-      </div>
-    );
-  }
-
   return (
     <div className="py-18 px-6">
       <ResumeProcessingStatus />
+      <RecommendedJobs />
+      {isLoading && (
+        <div className="flex items-center justify-center py-16">
+          <p className="text-lg text-[#4A4A4A]">Loading jobs...</p>
+        </div>
+      )}
+      {isError && (
+        <div className="flex items-center justify-center py-16">
+          <p className="text-lg text-[#CC2424]">
+            Error loading jobs:{" "}
+            {error instanceof Error ? error.message : "Unknown error"}
+          </p>
+        </div>
+      )}
+      {!isLoading && !isError && (
+      <>
       <div className="flex flex-row gap-6 items-stretch w-full">
         <div className="w-[65%]">
           <div className="border border-black rounded-4xl bg-[#6E62E5] p-8">
@@ -234,6 +232,8 @@ const JobseekerDashboard = () => {
           )}
         </div>
       </div>
+      </>
+      )}
     </div>
   );
 };

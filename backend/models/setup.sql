@@ -87,6 +87,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS applications_job_seeker_id_job_id_idx
 CREATE INDEX IF NOT EXISTS applications_job_id_idx
   ON public.applications (job_id);
 
+CREATE INDEX IF NOT EXISTS jobs_embedding_hnsw_idx
+  ON public.jobs USING hnsw (embedding vector_cosine_ops);
+
 CREATE TABLE IF NOT EXISTS public.notifications (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL,

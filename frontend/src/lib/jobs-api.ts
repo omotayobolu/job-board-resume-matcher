@@ -26,6 +26,36 @@ export type Applicants = {
   applied_at: string;
 };
 
+export type RecommendedJob = {
+  id: string;
+  job_title: string;
+  location: string;
+  work_type: string;
+  job_description: string;
+  job_status: string;
+  required_skills: string[];
+  created_at: string;
+  summary: string | null;
+  similarity: number;
+  matchPercent: number;
+};
+
+export type RecommendedJobsResponse = {
+  jobs: RecommendedJob[];
+  status: "ready" | "no_resume" | "processing" | "failed";
+  reason?: string;
+};
+
+export const fetchRecommendedJobs = async (): Promise<RecommendedJobsResponse> => {
+  try {
+    const response = await axiosInstance.get<RecommendedJobsResponse>("/jobs/recommended");
+    return response.data;
+  } catch (error) {
+    console.error("Error fetching recommended jobs:", error);
+    throw error;
+  }
+};
+
 export const fetchJobs = async (): Promise<Job[]> => {
   try {
     const response = await axiosInstance.get("/jobs/get-jobs");

@@ -2,8 +2,9 @@ import type { Request, Response, NextFunction } from "express";
 import { HttpStatusCode, CustomError } from "../utils/error-handler";
 import pool from "../db";
 import { jobEmbeddingQueue } from "../utils/jobEmbeddingQueue";
-import { createJobSchema, idParamSchema, jobStatusSchema, recruiterIdParamSchema } from "../schemas";
+import { createJobSchema, idParamSchema, jobStatusSchema, recommendedJobsQuerySchema, recruiterIdParamSchema } from "../schemas";
 import type { JobRow } from "../types/domain";
+import { findRecommendedJobs, loadSeekerResume, recommendationGate } from "../utils/recommendedJobs";
 
 const createJob = async (req: Request, res: Response, next: NextFunction) => {
   const recruiter_id = req.user.id;
@@ -65,6 +66,56 @@ const getJobs = async (req: Request, res: Response, next: NextFunction) => {
       [userId]
     );
     res.status(HttpStatusCode.OK).json({ jobs: jobs.rows });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const getRecommendedJobs = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (req.user.role !== "job_seeker") {
+      throw new CustomError(
+        "FORBIDDEN",
+        HttpStatusCode.FORBIDDEN,
+        "Access denied. Only job seekers can view recommended jobs.",
+        true,
+      );
+    }
+
+    const { limit, offset } = recommendedJobsQuerySchema.parse(req.query);
+    const parsedLimit = limit === undefined ? 20 : Number(limit);
+    const parsedOffset = offset === undefined ? 0 : Number(offset);
+    if (parsedLimit < 1 || parsedLimit > 50) {
+      throw new CustomError(
+        "BAD REQUEST",
+        HttpStatusCode.BAD_REQUEST,
+        "limit must be an integer from 1 to 50.",
+        true,
+      );
+    }
+
+    const gate = recommendationGate(await loadSeekerResume(req.user.id));
+    if (!gate.ready) {
+      res.status(HttpStatusCode.OK).json({
+        jobs: [],
+        status: gate.status,
+        reason: gate.reason,
+      });
+      return;
+    }
+
+    const jobs = await findRecommendedJobs({
+      resumeEmbedding: gate.embedding,
+      jobSeekerId: req.user.id,
+      limit: parsedLimit,
+      offset: parsedOffset,
+    });
+    res.status(HttpStatusCode.OK).json({
+      jobs,
+      status: "ready",
+      limit: parsedLimit,
+      offset: parsedOffset,
+    });
   } catch (error) {
     next(error);
   }
@@ -243,4 +294,4 @@ const deleteJob = async (req: Request, res: Response, next: NextFunction) => {
   }
 };
 
-export { createJob,getJobs,getJob,deleteJob,getJobsByRecruiter,updateJobStatus };
+export { createJob, getJobs, getJob, deleteJob, getJobsByRecruiter, updateJobStatus, getRecommendedJobs };

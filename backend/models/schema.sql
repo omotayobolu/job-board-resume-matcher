@@ -104,6 +104,14 @@ TABLESPACE pg_default;
 ALTER TABLE IF EXISTS public.jobs
     OWNER to postgres;
 
+CREATE EXTENSION IF NOT EXISTS vector;
+
+ALTER TABLE public.jobs
+    ADD COLUMN IF NOT EXISTS embedding vector(768);
+
+CREATE INDEX IF NOT EXISTS jobs_embedding_hnsw_idx
+    ON public.jobs USING hnsw (embedding vector_cosine_ops);
+
 
 
 
