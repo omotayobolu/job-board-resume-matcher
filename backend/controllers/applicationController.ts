@@ -133,6 +133,13 @@ const getAllApplications = async (req: Request, res: Response, next: NextFunctio
         error: "Job ID is required to fetch applications",
       });
     }
+    const job = await pool.query<{ id: string }>(
+      "SELECT id FROM jobs WHERE id = $1 AND recruiter_id = $2",
+      [jobId, req.user.id]
+    );
+    if (job.rowCount === 0) {
+      return res.status(HttpStatusCode.NOT_FOUND).json({ error: "Job not found" });
+    }
     const applications = await pool.query<ApplicationRow & { job_seeker_name: string }>(
       `SELECT 
       a.id,

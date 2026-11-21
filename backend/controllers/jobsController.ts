@@ -82,6 +82,15 @@ const getJobsByRecruiter = async (req: Request, res: Response, next: NextFunctio
       );
     }
 
+    if (recruiterId !== req.user.id) {
+      throw new CustomError(
+        "FORBIDDEN",
+        HttpStatusCode.FORBIDDEN,
+        "You can only view your own jobs.",
+        true
+      );
+    }
+
     const recruiterCheck = await pool.query<{ id: string; role: string | null }>(
       "SELECT id, role FROM users WHERE id = $1",
       [recruiterId]
