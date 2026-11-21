@@ -13,7 +13,7 @@ export type Job = {
   hasapplied?: boolean;
   applicants_count?: number;
   top_match?: number;
-  summary: string;
+  summary: string | null;
 };
 
 export type Applicants = {
