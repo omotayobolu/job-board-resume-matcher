@@ -24,7 +24,6 @@ const JobseekerDashboard = () => {
     queryKey: ["jobs"],
     queryFn: () => fetchJobs(),
   });
-  console.log(jobs);
   const [selectedJob, setSelectedJob] = useState(jobs ? jobs[0] : null);
   const [applying, setApplying] = useState(false);
 
@@ -105,7 +104,7 @@ const JobseekerDashboard = () => {
         <div className="w-[65%]">
           <div className="border border-black rounded-4xl bg-[#6E62E5] p-8">
             <h2 className="text-2xl font-bold text-white font-sf-pro">
-              Elevate Yor Application!
+              Elevate Your Application!
             </h2>
             <p className="mt-6 font-medium text-lg text-white">
               Want to stand out to recruiters? Learn how to optimize your
@@ -146,7 +145,7 @@ const JobseekerDashboard = () => {
                 </span>
                 <h2 className="text-xl font-medium mt-2">{job.job_title}</h2>
                 <p className="mt-5 text-[#4A4A4A] line-clamp-2">
-                  {job.job_description}
+                  {job.summary?.trim() || job.job_description}
                 </p>
                 <div className="mt-5 flex flex-row flex-wrap items-center gap-2">
                   {job.required_skills.map((skill, index) => (

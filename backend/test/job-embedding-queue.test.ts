@@ -116,6 +116,7 @@ test("job embedding reruns reuse the saved vector without AI and rescore applica
           return { rows: [{ ...details, id: "job-id", job_status: "active", has_embedding: hasEmbedding }] };
         }
         if (sql.includes("SET embedding =")) {
+          assert.match(sql, /summary = \$2/);
           assert.deepEqual(params, [`[${vector.join(",")}]`, "Build useful services", "job-id"]);
           hasEmbedding = true;
         } else if (sql.includes("UPDATE applications")) {

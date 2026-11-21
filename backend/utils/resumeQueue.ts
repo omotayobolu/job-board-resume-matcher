@@ -44,7 +44,7 @@ async function jobState(jobId: string): Promise<keyof JobStates | null> {
   return jobs[0]?.state ?? null;
 }
 
-async function processResumeJob(job: { id: string; data: ResumeJob; retryCount: number }): Promise<void> {
+export async function processResumeJob(job: { id: string; data: ResumeJob; retryCount: number }): Promise<void> {
   const token = randomUUID();
   const claimed = await pool.query<ProfileToProcess>(
     `UPDATE job_seeker

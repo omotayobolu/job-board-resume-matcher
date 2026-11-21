@@ -13,7 +13,7 @@ export type Job = {
   hasapplied?: boolean;
   applicants_count?: number;
   top_match?: number;
-  summary: string;
+  summary: string | null;
 };
 
 export type Applicants = {
@@ -51,10 +51,8 @@ export const fetchRecruiterJobs = async (
 export const fetchApplicantsByJobId = async (
   jobId: string
 ): Promise<Applicants[]> => {
-  console.log(`Fetching applicants for job ID: ${jobId}`);
   try {
     const response = await axiosInstance.get(`/applications/${jobId}`);
-    console.log(response);
     return response.data.applications;
   } catch (error) {
     console.error("Error fetching applicants:", error);
