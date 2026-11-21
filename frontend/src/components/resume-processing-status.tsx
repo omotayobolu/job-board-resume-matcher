@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { axiosInstance } from "@/lib/axios-instance";
 import { Button } from "./ui/button";
@@ -11,6 +11,7 @@ type ResumeStatus = {
 };
 
 export default function ResumeProcessingStatus() {
+  const queryClient = useQueryClient();
   const [retrying, setRetrying] = useState(false);
   const { data, isError, refetch } = useQuery<ResumeStatus>({
     queryKey: ["resume-processing-status"],
@@ -32,7 +33,10 @@ export default function ResumeProcessingStatus() {
     setRetrying(true);
     try {
       await axiosInstance.post("/job-seeker/retry-processing");
-      await refetch();
+      await Promise.all([
+        refetch(),
+        queryClient.invalidateQueries({ queryKey: ["recommended-jobs"] }),
+      ]);
       toast.success("Resume processing queued again.");
     } catch {
       toast.error("Could not retry resume processing. Please try again.");

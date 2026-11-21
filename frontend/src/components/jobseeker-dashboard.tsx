@@ -1,6 +1,6 @@
 import { Link } from "react-router";
 import { Button } from "./ui/button";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchJobs, type Job } from "@/lib/jobs-api";
 import { useState, type JSX } from "react";
 import { formatDistanceToNow } from "date-fns";
@@ -15,6 +15,7 @@ const formatRelativeTime = (dateString: string): string => {
 };
 
 const JobseekerDashboard = () => {
+  const queryClient = useQueryClient();
   const {
     data: jobs,
     isLoading,
@@ -69,7 +70,10 @@ const JobseekerDashboard = () => {
       if (response.status === 201) {
         toast.success(response.data.message);
         // Refetch jobs to update the hasapplied status
-        await refetchJobs();
+        await Promise.all([
+          refetchJobs(),
+          queryClient.invalidateQueries({ queryKey: ["recommended-jobs"] }),
+        ]);
         setApplying(false);
       }
     } catch (error) {

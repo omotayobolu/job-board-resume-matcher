@@ -39,6 +39,8 @@ export default function RecommendedJobs() {
   const { data, isLoading, isError } = useQuery({
     queryKey: ["recommended-jobs"],
     queryFn: () => fetchRecommendedJobs(),
+    refetchInterval: (query) =>
+      query.state.data?.status === "processing" ? 5000 : false,
   });
 
   return (
