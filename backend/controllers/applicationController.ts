@@ -64,7 +64,6 @@ const applyToJob = async (req: Request, res: Response, next: NextFunction) => {
 
     const application = result.rows[0];
     if (!application) throw new Error("Application insert returned no row");
-    await updateHighestMatchNotification(recruiterId);
 
     res.status(HttpStatusCode.CREATED).json({
       message: "Application submitted successfully",
@@ -156,6 +155,16 @@ const getAllApplications = async (req: Request, res: Response, next: NextFunctio
   }
 };
 
+function buildTopMatchNotification(applicantName: string, jobTitle: string, score: number) {
+  const firstName = applicantName.split(" ")[0] ?? applicantName;
+  const percent = Math.round(score * 100);
+  return {
+    heading: "Top Match!",
+    message: `${applicantName} matched above ${percent}% in your active ${jobTitle} listing. ${firstName} appears to be the most suitable candidate for this role based on their skills, tools, and experience.`,
+    priority: score >= 0.6 ? "high" as const : "medium" as const,
+  };
+}
+
 const updateHighestMatchNotification = async (recruiterId: string) => {
   try {
     const jobs = await pool.query<{ id: string; job_title: string }>(
@@ -209,23 +218,19 @@ const updateHighestMatchNotification = async (recruiterId: string) => {
 
     const job = jobs.rows.find((job) => job.id === job_id);
     if (!job) throw new Error("Notification job not found");
-    const applicantName = jobSeekerName.rows[0]!.full_name;
-
-    const message = `${
-      applicantName
-    } matched above ${Math.round(score)}% in your active ${
-      job.job_title
-    } listing. ${
-      applicantName.split(" ")[0]
-    } appears to be the most suitable candidate for this role based on their skills, tools, and experience.`;
+    const notification = buildTopMatchNotification(
+      jobSeekerName.rows[0]!.full_name,
+      job.job_title,
+      score,
+    );
 
     if (existingNotification.rows.length > 0) {
       await pool.query(
         "UPDATE notifications SET heading = $1, message = $2, priority = $3, applicant_id = $4, job_id = $5 WHERE id = $6",
         [
-          "Top Match!",
-          message,
-          score > 60 ? "high" : "medium",
+          notification.heading,
+          notification.message,
+          notification.priority,
           job_seeker_id,
           job_id,
           existingNotification.rows[0]!.id,
@@ -236,9 +241,9 @@ const updateHighestMatchNotification = async (recruiterId: string) => {
         "INSERT INTO notifications (user_id, heading, message, priority, is_read, applicant_id, job_id) VALUES ($1, $2, $3, $4, $5, $6, $7)",
         [
           recruiterId,
-          "Top Match!",
-          message,
-          score > 60 ? "high" : "medium",
+          notification.heading,
+          notification.message,
+          notification.priority,
           false,
           job_seeker_id,
           job_id,
@@ -250,4 +255,4 @@ const updateHighestMatchNotification = async (recruiterId: string) => {
   }
 };
 
-export { applyToJob,getAllApplications };
+export { applyToJob,getAllApplications,buildTopMatchNotification };
