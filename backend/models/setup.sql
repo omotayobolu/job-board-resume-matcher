@@ -66,6 +66,9 @@ CREATE TABLE IF NOT EXISTS public.jobs (
   created_at timestamp without time zone,
   work_type varchar(10),
   summary text,
+  embedding_status text NOT NULL DEFAULT 'pending'
+    CHECK (embedding_status IN ('pending', 'processing', 'completed', 'failed')),
+  embedding_job_id uuid,
   embedding vector(768)
 );
 

@@ -1,11 +1,9 @@
 import type { Request, Response, NextFunction } from "express";
 import { HttpStatusCode, CustomError } from "../utils/error-handler";
 import pool from "../db";
-import { parseJobDescription } from "../utils/parseResume";
-import { embedJob } from "../utils/embed";
-import { vectorLiteral } from "../utils/vector";
+import { jobEmbeddingQueue } from "../utils/jobEmbeddingQueue";
 import { createJobSchema, idParamSchema, jobStatusSchema, recruiterIdParamSchema } from "../schemas";
-import type { JobDetails, JobRow } from "../types/domain";
+import type { JobRow } from "../types/domain";
 
 const createJob = async (req: Request, res: Response, next: NextFunction) => {
   const recruiter_id = req.user.id;
@@ -19,59 +17,28 @@ const createJob = async (req: Request, res: Response, next: NextFunction) => {
       );
     }
 
-    const result = await pool.query<{ id: string }>(
-      "INSERT INTO jobs (recruiter_id, job_title, job_description, location, required_skills, job_status, work_type, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW()) RETURNING id",
-      [
-        recruiter_id,
-        job_details.job_title,
-        job_details.job_description,
-        job_details.location,
-        job_details.required_skills,
-        "active",
-        job_details.work_type,
-      ]
-    );
-
-    const saved = result.rows[0];
-    if (!saved) throw new Error("Job insert returned no row");
-    const job_id = saved.id;
+    await pool.transaction(async (client) => {
+      const result = await client.query<{ id: string }>(
+        `INSERT INTO jobs
+         (recruiter_id, job_title, job_description, location, required_skills,
+          job_status, work_type, embedding_status, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', NOW()) RETURNING id`,
+        [recruiter_id, job_details.job_title, job_details.job_description,
+          job_details.location, job_details.required_skills, "active", job_details.work_type],
+      );
+      const saved = result.rows[0];
+      if (!saved) throw new Error("Job insert returned no row");
+      const queueId = await jobEmbeddingQueue.enqueue(client, saved.id);
+      await client.query("UPDATE jobs SET embedding_job_id = $1 WHERE id = $2", [queueId, saved.id]);
+    });
 
     res
       .status(HttpStatusCode.CREATED)
       .json({ message: "Job created successfully." });
-
-    processEmbeddings(job_id, job_details).catch((error) => {
-      console.error(`Embedding failed for job ${job_id}:`, error);
-    });
   } catch (error) {
     next(error);
   }
 };
-
-async function processEmbeddings(job_id: string, job_details: JobDetails) {
-  const jobDetails = await parseJobDescription(job_details.job_description);
-  const complete_job_details = {
-    ...job_details,
-    responsibilities: jobDetails.responsibilities,
-  };
-  const embedding = await embedJob(complete_job_details);
-
-  await pool.query("UPDATE jobs SET embedding = $1::vector WHERE id = $2", [
-    vectorLiteral(embedding),
-    job_id,
-  ]);
-  await pool.query(
-    `UPDATE applications AS a
-     SET score = 1 - (js.embedding <=> j.embedding)
-     FROM job_seeker AS js, jobs AS j
-     WHERE a.job_id = $1
-       AND j.id = a.job_id
-       AND js.user_id = a.job_seeker_id
-       AND js.embedding IS NOT NULL
-       AND j.embedding IS NOT NULL`,
-    [job_id]
-  );
-}
 
 const getJobs = async (req: Request, res: Response, next: NextFunction) => {
   const userId = req.user.id;

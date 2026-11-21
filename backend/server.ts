@@ -9,6 +9,7 @@ import { errorHandler } from "./utils/error-handler";
 import router from "./routes/routes";
 import { requiredEnv } from "./env";
 import { resumeQueue } from "./utils/resumeQueue";
+import { jobEmbeddingQueue } from "./utils/jobEmbeddingQueue";
 
 const app = express();
 app.disable("etag");
@@ -38,7 +39,7 @@ app.use(errorMiddleware);
 
 const port = process.env.PORT || 3000;
 let server: ReturnType<typeof app.listen> | undefined;
-void resumeQueue.start().then(() => {
+void resumeQueue.start().then(() => jobEmbeddingQueue.start()).then(() => {
   server = app.listen(port, () => {
     console.log(`Server is running on port ${port}...`);
   });
