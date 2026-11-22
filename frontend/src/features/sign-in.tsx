@@ -10,7 +10,7 @@ import { MAX_PASSWORD_LENGTH, validateEmail } from "@/lib/validation";
 import { setUser, type UserType } from "@/store/userSlice";
 import { useForm } from "react-hook-form";
 import { useDispatch } from "react-redux";
-import { useNavigate } from "react-router";
+import { useLocation, useNavigate } from "react-router";
 
 interface SignInFields {
   email: string;
@@ -19,7 +19,13 @@ interface SignInFields {
 
 const SignIn = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const dispatch = useDispatch();
+  const apiUnreachable =
+    typeof location.state === "object" &&
+    location.state !== null &&
+    "apiUnreachable" in location.state &&
+    location.state.apiUnreachable === true;
   const {
     register,
     handleSubmit,
@@ -61,6 +67,14 @@ const SignIn = () => {
         noValidate
         className="mt-8 flex flex-col gap-3"
       >
+        {apiUnreachable && (
+          <p
+            role="status"
+            className="rounded-xl border border-border bg-muted px-4 py-3 text-sm text-muted-foreground"
+          >
+            We could not reach Shortlistly just now. Please try again in a few minutes.
+          </p>
+        )}
         <div>
           <label htmlFor="email" className="block mb-2 font-medium">
             Email

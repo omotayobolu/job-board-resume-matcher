@@ -1,4 +1,5 @@
 import AddRoleCvs from "@/components/add-role-cvs";
+import Loading from "@/components/loading";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -387,7 +388,7 @@ const JobApplicants = () => {
             {isLoading ? (
               <TableRow>
                 <TableCell colSpan={6} className="text-center py-4">
-                  Loading...
+                  <Loading />
                 </TableCell>
               </TableRow>
             ) : filteredApplicants && filteredApplicants.length === 0 ? (
