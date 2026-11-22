@@ -10,11 +10,12 @@ import {
   updateJobStatus,
 } from "../controllers/jobsController";
 import { isJobSeeker, isRecruiter } from "../middlewares/authMiddleware";
+import { blockJobSeekerFeatures } from "../middlewares/jobSeekerFeatures";
 
 router
   .post("/create-job", isRecruiter, createJob)
-  .get("/get-jobs", getJobs)
-  .get("/recommended", isJobSeeker, getRecommendedJobs)
+  .get("/get-jobs", blockJobSeekerFeatures, getJobs)
+  .get("/recommended", blockJobSeekerFeatures, isJobSeeker, getRecommendedJobs)
   .get("/get-jobs/:recruiterId", isRecruiter, getJobsByRecruiter)
   .get("/get-job/:id", getJob)
   .patch("/update-job-status/:id", isRecruiter, updateJobStatus)

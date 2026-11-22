@@ -1,13 +1,6 @@
 import BrandLogo from "@/components/brand-logo";
 import { Button } from "@/components/ui/button";
-import {
-  BriefcaseBusiness,
-  FileText,
-  ListOrdered,
-  MessageSquareText,
-  Search,
-  Sparkles,
-} from "lucide-react";
+import { BriefcaseBusiness, ListOrdered, Sparkles, Upload } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 
@@ -17,65 +10,26 @@ interface Feature {
   description: string;
 }
 
-const recruiterFeatures: Feature[] = [
+const features: Feature[] = [
   {
     icon: <BriefcaseBusiness size={22} />,
-    title: "Post a job",
+    title: "Create the role",
     description:
-      "Describe the role, required skills and location. You can open or close the job at any time.",
+      "Write the job once. Every CV is screened against that description, the skills, and the location.",
+  },
+  {
+    icon: <Upload size={22} />,
+    title: "Drop in the applicants",
+    description:
+      "Add the CVs for a role in one go. Shortlistly reads them so your team does not have to open every file.",
   },
   {
     icon: <ListOrdered size={22} />,
-    title: "See your best fits first",
+    title: "Get a ranked shortlist",
     description:
-      "Applicants who fit the role best show up at the top of your list.",
-  },
-  {
-    icon: <MessageSquareText size={22} />,
-    title: "Ask about your applicants",
-    description:
-      "Ask a question like \"Who has led a team before?\" and get a quick answer from their resumes.",
+      "Applicants come back in order, with a score and a short explanation of why they are high or low.",
   },
 ];
-
-const seekerFeatures: Feature[] = [
-  {
-    icon: <FileText size={22} />,
-    title: "Upload your resume once",
-    description:
-      "Add a PDF or DOCX resume when you create your profile. It is used for every job you apply to.",
-  },
-  {
-    icon: <Search size={22} />,
-    title: "Browse open jobs",
-    description: "See the jobs recruiters have posted and apply in one click.",
-  },
-  {
-    icon: <Sparkles size={22} />,
-    title: "Get matched on skills",
-    description:
-      "Your resume is compared with each job's description, so recruiters see how closely you fit the role.",
-  },
-];
-
-const FeatureList = ({ heading, features }: { heading: string; features: Feature[] }) => (
-  <div className="bg-white rounded-3xl p-8 flex-1">
-    <h3 className="text-2xl font-semibold text-dark-grey">{heading}</h3>
-    <ul className="mt-6 flex flex-col gap-6">
-      {features.map((feature) => (
-        <li key={feature.title} className="flex gap-4">
-          <span className="shrink-0 size-11 rounded-full bg-purple/10 text-purple flex items-center justify-center">
-            {feature.icon}
-          </span>
-          <div>
-            <p className="font-semibold text-dark-grey">{feature.title}</p>
-            <p className="text-dark-grey/80 mt-1">{feature.description}</p>
-          </div>
-        </li>
-      ))}
-    </ul>
-  </div>
-);
 
 const Landing = () => {
   return (
@@ -89,46 +43,56 @@ const Landing = () => {
 
       <main className="flex-1">
         <section className="px-6 sm:px-12 pt-12 pb-16 text-center max-w-4xl mx-auto">
-          <h1 className="font-bold text-dark-grey text-4xl sm:text-6xl leading-tight">
-            Hire Better, Apply Smarter.
+          <p className="text-purple font-semibold tracking-wide">
+            For recruiting agencies and hiring teams
+          </p>
+          <h1 className="font-bold text-dark-grey text-4xl sm:text-6xl leading-tight mt-4">
+            Drop in your applicants, get a ranked shortlist with reasons in minutes.
           </h1>
           <p className="text-dark-grey/80 text-lg sm:text-xl mt-6 leading-8">
-            JobBoard matches resumes to job descriptions so recruiters see the
-            strongest applicants first and job seekers apply where they fit.
+            Shortlistly helps small recruiting agencies and in-house hiring teams,
+            anywhere in the world, turn a pile of CVs into a shortlist they can explain.
           </p>
           <div className="mt-10 flex flex-wrap justify-center gap-4">
             <Button asChild variant="primary" className="rounded-full h-14 px-8 text-lg">
-              <Link to="/signup">Post a job</Link>
-            </Button>
-            <Button
-              asChild
-              variant="outline"
-              className="rounded-full h-14 px-8 text-lg border-purple text-purple"
-            >
-              <Link to="/signup">Find a job</Link>
+              <Link to="/signup">Start screening</Link>
             </Button>
           </div>
         </section>
 
-        <section className="px-6 sm:px-12 pb-16 max-w-6xl mx-auto flex flex-col md:flex-row gap-6">
-          <FeatureList heading="For recruiters" features={recruiterFeatures} />
-          <FeatureList heading="For job seekers" features={seekerFeatures} />
+        <section className="px-6 sm:px-12 pb-16 max-w-6xl mx-auto">
+          <div className="bg-white rounded-3xl p-8">
+            <h2 className="text-2xl font-semibold text-dark-grey">How screening works</h2>
+            <ul className="mt-6 grid gap-6 md:grid-cols-3">
+              {features.map((feature) => (
+                <li key={feature.title} className="flex gap-4">
+                  <span className="shrink-0 size-11 rounded-full bg-purple/10 text-purple flex items-center justify-center">
+                    {feature.icon}
+                  </span>
+                  <div>
+                    <p className="font-semibold text-dark-grey">{feature.title}</p>
+                    <p className="text-dark-grey/80 mt-1">{feature.description}</p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
         </section>
 
         <section className="px-6 sm:px-12 pb-20 max-w-4xl mx-auto">
           <div className="bg-purple rounded-3xl p-8 sm:p-12 text-center text-white">
-            <h2 className="text-2xl sm:text-3xl font-semibold">How matching works</h2>
+            <Sparkles className="mx-auto" size={28} />
+            <h2 className="text-2xl sm:text-3xl font-semibold mt-4">Reasons, not just a score</h2>
             <p className="mt-4 text-light-grey leading-7">
-              JobBoard reads your resume and the job description and checks
-              how well they line up. The better your experience fits the role,
-              the higher you appear on the recruiter's list.
+              Each person on the shortlist includes what matches the role and what is missing,
+              so a recruiter can defend the ranking to a client or a hiring manager.
             </p>
           </div>
         </section>
       </main>
 
       <footer className="px-6 sm:px-12 py-6 text-center text-sm text-dark-grey/70">
-        JobBoard
+        Shortlistly
       </footer>
     </div>
   );

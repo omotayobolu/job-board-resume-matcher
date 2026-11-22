@@ -1,4 +1,5 @@
-import { Route, Routes } from "react-router";
+import { jobSeekerFeaturesEnabled } from "@/lib/features";
+import { Navigate, Route, Routes } from "react-router";
 import SignIn from "./features/sign-in";
 import SignUp from "./features/sign-up";
 import Dashboard from "./features/dashboard";
@@ -19,10 +20,28 @@ function App() {
       <Route path="signup" element={<SignUp />} />
       <Route element={<ProtectedRoute />}>
         <Route path="recruiter-profile" element={<RecruiterProfile />} />
-        <Route path="jobseeker-profile" element={<JobseekerProfile />} />
+        <Route
+          path="jobseeker-profile"
+          element={
+            jobSeekerFeaturesEnabled() ? (
+              <JobseekerProfile />
+            ) : (
+              <Navigate to="/dashboard" replace />
+            )
+          }
+        />
         <Route path="dashboard" element={<DashboardLayout />}>
           <Route index element={<Dashboard />} />
-          <Route path="profile" element={<JobSeekerProfilePage />} />
+          <Route
+            path="profile"
+            element={
+              jobSeekerFeaturesEnabled() ? (
+                <JobSeekerProfilePage />
+              ) : (
+                <Navigate to="/dashboard" replace />
+              )
+            }
+          />
           <Route path="applicants/:jobId" element={<JobApplicants />} />
           <Route path="messages/" element={<Messages />} />
           <Route path="messages/:userId" element={<Messages />} />

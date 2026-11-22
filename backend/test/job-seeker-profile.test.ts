@@ -4,6 +4,8 @@ import type { NextFunction, Request, Response } from "express";
 import type { PoolClient } from "pg";
 import { DeleteObjectCommand } from "@aws-sdk/client-s3";
 
+process.env.JOB_SEEKER_FEATURES = "true";
+
 type MockablePool = {
   query: (...args: unknown[]) => Promise<unknown>;
   transaction: <T>(work: (client: PoolClient) => Promise<T>) => Promise<T>;

@@ -1,3 +1,4 @@
+import { jobSeekerFeaturesEnabled } from "@/lib/features";
 import { selectUser } from "@/store/userSlice";
 import { useSelector } from "react-redux";
 import RecruiterSidebar from "./recruiter-sidebar";
@@ -9,15 +10,18 @@ import JobseekerSidebar from "./jobseeker-sidebar";
 const DashboardLayout = () => {
   const user = useSelector(selectUser);
   const [openDialog, setOpenDialog] = useState(false);
+  const showRecruiterNav = user.role === "recruiter";
+  const showSeekerNav = user.role !== "recruiter" && jobSeekerFeaturesEnabled();
+  const showNav = showRecruiterNav || showSeekerNav;
 
   return (
     <div className="w-full min-h-screen h-full flex flex-row bg-[rgba(245,247,251,1)] font-inter">
-      {user.role === "recruiter" ? (
+      {showRecruiterNav ? (
         <RecruiterSidebar dialogOpen={() => setOpenDialog(true)} />
-      ) : (
+      ) : showSeekerNav ? (
         <JobseekerSidebar />
-      )}
-      <div className="w-[85%] ml-[15%]">
+      ) : null}
+      <div className={showNav ? "w-[85%] ml-[15%]" : "w-full"}>
         <Outlet />
         <PostJobDIalog openDialog={openDialog} setOpenDialog={setOpenDialog} />
       </div>

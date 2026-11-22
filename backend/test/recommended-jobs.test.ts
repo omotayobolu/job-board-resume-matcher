@@ -5,6 +5,7 @@ import { ZodError } from "zod";
 import { matchPercent } from "../utils/matchPercent";
 
 process.env.DATABASE_URL ??= "postgres://shortlistly:shortlistly@127.0.0.1:5432/shortlistly";
+process.env.JOB_SEEKER_FEATURES = "true";
 
 const recruiterId = "55555555-5555-4555-8555-555555555555";
 const seekerId = "44444444-4444-4444-8444-444444444444";

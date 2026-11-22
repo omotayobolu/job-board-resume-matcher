@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
+process.env.JOB_SEEKER_FEATURES = "true";
+
 type MockablePool = {
   query: (...args: unknown[]) => Promise<unknown>;
 };
