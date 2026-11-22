@@ -1,12 +1,15 @@
+import { DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { createHash } from "node:crypto";
 import type { PoolClient } from "pg";
 import { DOCX_MIME, PDF_MIME, ZIP_MIMES, uploadLimits } from "../config/uploadLimits";
 import pool from "../db";
-import { CustomError, HttpStatusCode } from "./error-handler";
+import { s3 } from "../config/s3";
+import { requiredEnv } from "../env";
+import { CustomError, HttpStatusCode, errorHandler } from "./error-handler";
 import { jobEmbeddingQueue } from "./jobEmbeddingQueue";
 import { screeningQueue, type ScreeningCvJob } from "./screeningQueue";
 import { uploadResume, validateResumeFile } from "./resumeUpload";
-import { extractCvZip } from "./zipArchive";
+import { extractCvZip, type CvExtractionBudget } from "./zipArchive";
 
 export type CvFile = {
   filename: string;
@@ -81,7 +84,7 @@ function cvFromBuffer(filename: string, buffer: Buffer, mimetype: typeof PDF_MIM
   return { filename, buffer: file.buffer, mimetype, sha256: fileSha256(file.buffer) };
 }
 
-export async function collectCvs(files: Express.Multer.File[]): Promise<{ cvs: CvFile[]; skipped: SkippedUpload[] }> {
+export async function collectCvs(files: Express.Multer.File[], budget: CvExtractionBudget = { remainingFiles: uploadLimits.maxFilesPerBatch, remainingBytes: uploadLimits.maxUncompressedBytes }): Promise<{ cvs: CvFile[]; skipped: SkippedUpload[] }> {
   if (files.length === 0) {
     throw badRequest("Add at least one CV (PDF, DOCX, or a zip of CVs).");
   }
@@ -98,7 +101,7 @@ export async function collectCvs(files: Express.Multer.File[]): Promise<{ cvs: C
       if (file.size > uploadLimits.maxZipBytes || file.buffer.length > uploadLimits.maxZipBytes) {
         throw badRequest("Zip archives must be 50 MB or smaller.");
       }
-      const extracted = await extractCvZip(file.buffer);
+      const extracted = await extractCvZip(file.buffer, budget);
       skipped.push(...extracted.skipped);
       for (const entry of extracted.files) {
         cvs.push(cvFromBuffer(entry.filename, entry.buffer, entry.mimetype));
@@ -108,6 +111,14 @@ export async function collectCvs(files: Express.Multer.File[]): Promise<{ cvs: C
     if (extension !== "pdf" && extension !== "docx") {
       throw badRequest("Each CV must be a PDF or DOCX file. You can also upload a zip of those files.");
     }
+    if (budget.remainingFiles < 1) {
+      throw badRequest(`A screening can include at most ${uploadLimits.maxFilesPerBatch} CVs.`);
+    }
+    if (file.buffer.length > budget.remainingBytes) {
+      throw badRequest("This upload is too large when uncompressed.");
+    }
+    budget.remainingFiles -= 1;
+    budget.remainingBytes -= file.buffer.length;
     const mimetype = extension === "pdf" ? PDF_MIME : DOCX_MIME;
     cvs.push(cvFromBuffer(file.originalname, file.buffer, mimetype));
   }
@@ -244,6 +255,7 @@ async function insertCandidate(client: PoolClient, workspaceId: string, sha256: 
 async function acceptCvs(
   client: PoolClient,
   args: { workspaceId: string; jobId: string; userId: string; cvs: CvFile[]; skipped: SkippedUpload[] },
+  uploadedKeys: string[],
 ): Promise<{ batch_id: string; total_files: number; skipped_files: number }> {
   await client.query(`SELECT id FROM workspaces WHERE id = $1 FOR UPDATE`, [args.workspaceId]);
 
@@ -290,7 +302,9 @@ async function acceptCvs(
         seen.set(cv.sha256, known);
       } else {
         const file = asResumeFile(cv.filename, cv.buffer, cv.mimetype);
-        const key = await uploadResume(file, args.workspaceId, { folder: "cvs", candidateId: createdId });
+        const key = await uploadResume(file, args.workspaceId, {
+          folder: "cvs", candidateId: createdId, onKeyCreated: (key) => uploadedKeys.push(key),
+        });
         await client.query(
           `UPDATE candidates SET resume_s3_key = $1, resume_filename = $2 WHERE id = $3`,
           [key, cv.filename, createdId],
@@ -349,6 +363,28 @@ async function acceptCvs(
   return { batch_id: batchId, total_files: totalFiles, skipped_files: skipped };
 }
 
+// Only objects created by this attempt are removed after the SQL transaction fails.
+async function withUploadCleanup<T>(work: (uploadedKeys: string[]) => Promise<T>): Promise<T> {
+  const uploadedKeys: string[] = [];
+  try {
+    return await work(uploadedKeys);
+  } catch (error) {
+    const cleanup = await Promise.allSettled(uploadedKeys.map(async (key) => s3.send(
+      new DeleteObjectCommand({ Bucket: requiredEnv("S3_BUCKET_NAME"), Key: key }),
+    )));
+    for (const result of cleanup) {
+      if (result.status === "rejected") {
+        try {
+          errorHandler.handleError(result.reason);
+        } catch {
+          // Preserve the original upload/transaction error even if logging fails.
+        }
+      }
+    }
+    throw error;
+  }
+}
+
 export async function createRoleWithCvs(
   userId: string,
   roleText: string,
@@ -356,7 +392,7 @@ export async function createRoleWithCvs(
 ): Promise<{ job_id: string; batch_id: string; total_files: number; skipped_files: number }> {
   const { job_title, job_description } = roleTextToJob(roleText);
   const collected = await collectCvs(files);
-  return pool.transaction(async (client) => {
+  return withUploadCleanup((uploadedKeys) => pool.transaction(async (client) => {
     const workspaceId = await workspaceIdFor(client, userId);
     const inserted = await client.query<{ id: string }>(
       `INSERT INTO jobs
@@ -370,9 +406,9 @@ export async function createRoleWithCvs(
     if (!jobId) throw new Error("Job insert returned no row");
     const queueId = await jobEmbeddingQueue.enqueue(client, jobId);
     await client.query(`UPDATE jobs SET embedding_job_id = $1 WHERE id = $2`, [queueId, jobId]);
-    const batch = await acceptCvs(client, { workspaceId, jobId, userId, ...collected });
+    const batch = await acceptCvs(client, { workspaceId, jobId, userId, ...collected }, uploadedKeys);
     return { job_id: jobId, ...batch };
-  });
+  }));
 }
 
 export async function addCvsToRole(
@@ -381,16 +417,16 @@ export async function addCvsToRole(
   files: Express.Multer.File[],
 ): Promise<{ job_id: string; batch_id: string; total_files: number; skipped_files: number }> {
   const collected = await collectCvs(files);
-  return pool.transaction(async (client) => {
+  return withUploadCleanup((uploadedKeys) => pool.transaction(async (client) => {
     const job = await ownedJob(client, jobId, userId);
     const batch = await acceptCvs(client, {
       workspaceId: job.workspace_id,
       jobId: job.id,
       userId,
       ...collected,
-    });
+    }, uploadedKeys);
     return { job_id: job.id, ...batch };
-  });
+  }));
 }
 
 export type BatchFileStatus = {

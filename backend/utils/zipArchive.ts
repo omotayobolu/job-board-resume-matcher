@@ -13,6 +13,12 @@ export type SkippedZipEntry = {
   reason: string;
 };
 
+// Shared by every archive and loose CV in one request.
+export type CvExtractionBudget = {
+  remainingFiles: number;
+  remainingBytes: number;
+};
+
 export const unsupportedCvReason = "Not a PDF or DOCX file.";
 
 function badRequest(message: string): CustomError {
@@ -87,7 +93,7 @@ function zipFailure(error: unknown): Error {
 // Read CV files out of a zip. Rejects encrypted archives, unsafe paths, and
 // uncompressed output over the configured cap. Skips __MACOSX and other junk.
 // A notes.txt (or any other non-CV) is reported as skipped and does not reject the zip.
-export async function extractCvZip(zipBuffer: Buffer): Promise<{ files: ExtractedCv[]; skipped: SkippedZipEntry[] }> {
+export async function extractCvZip(zipBuffer: Buffer, budget: CvExtractionBudget = { remainingFiles: uploadLimits.maxFilesPerBatch, remainingBytes: uploadLimits.maxUncompressedBytes }): Promise<{ files: ExtractedCv[]; skipped: SkippedZipEntry[] }> {
   if (zipBuffer.length > uploadLimits.maxZipBytes) {
     throw badRequest("Zip archives must be 50 MB or smaller.");
   }
@@ -106,7 +112,6 @@ export async function extractCvZip(zipBuffer: Buffer): Promise<{ files: Extracte
 
   const files: ExtractedCv[] = [];
   const skipped: SkippedZipEntry[] = [];
-  let uncompressedTotal = 0;
   let entries = 0;
   try {
     for await (const entry of zipfile.eachEntry()) {
@@ -123,12 +128,16 @@ export async function extractCvZip(zipBuffer: Buffer): Promise<{ files: Extracte
       if (!Number.isSafeInteger(entry.uncompressedSize) || entry.uncompressedSize < 0) {
         throw badRequest("This zip is too large when uncompressed.");
       }
-      if (uncompressedTotal + entry.uncompressedSize > uploadLimits.maxUncompressedBytes) {
+      if (entry.uncompressedSize > budget.remainingBytes) {
         throw badRequest("This zip is too large when uncompressed.");
       }
-      uncompressedTotal += entry.uncompressedSize;
+      budget.remainingBytes -= entry.uncompressedSize;
 
       if (isJunkZipEntry(entry.fileName)) continue;
+      if (budget.remainingFiles < 1) {
+        throw badRequest(`A screening can include at most ${uploadLimits.maxFilesPerBatch} CVs.`);
+      }
+      budget.remainingFiles -= 1;
 
       const extension = extensionOf(entry.fileName);
       const filename = baseName(entry.fileName);
@@ -144,7 +153,11 @@ export async function extractCvZip(zipBuffer: Buffer): Promise<{ files: Extracte
       }
 
       const stream = await zipfile.openReadStreamPromise(entry);
-      const buffer = await readCapped(stream, uploadLimits.maxResumeBytes);
+      const buffer = await readCapped(stream, Math.min(
+        uploadLimits.maxResumeBytes,
+        entry.uncompressedSize + budget.remainingBytes,
+      ));
+      budget.remainingBytes += entry.uncompressedSize - buffer.length;
       if (buffer.length === 0) throw badRequest(`"${filename}" is empty.`);
       if (buffer.length > uploadLimits.maxResumeBytes) {
         throw badRequest(`"${filename}" is larger than 10 MB.`);

@@ -178,49 +178,51 @@ async function screeningState(screeningId: string): Promise<ScreeningState | und
 }
 
 // Move a file to a terminal status once. A second delivery must not bump counters again.
-async function finishBatchFile(fileId: string, status: "completed" | "failed", reason?: string): Promise<void> {
-  const updated = await pool.query<{ batch_id: string }>(
-    `UPDATE upload_batch_files
-     SET status = $2, reason = COALESCE($3, reason)
-     WHERE id = $1 AND status IN ('pending', 'processing')
-     RETURNING batch_id`,
-    [fileId, status, reason ?? null],
-  );
-  const batchId = updated.rows[0]?.batch_id;
-  if (!batchId) return;
+export async function finishBatchFile(fileId: string, status: "completed" | "failed", reason?: string): Promise<void> {
+  await pool.transaction(async (client) => {
+    const updated = await client.query<{ batch_id: string }>(
+      `UPDATE upload_batch_files
+       SET status = $2, reason = COALESCE($3, reason)
+       WHERE id = $1 AND status IN ('pending', 'processing')
+       RETURNING batch_id`,
+      [fileId, status, reason ?? null],
+    );
+    const batchId = updated.rows[0]?.batch_id;
+    if (!batchId) return;
 
-  if (status === "completed") {
-    await pool.query(
+    if (status === "completed") {
+      await client.query(
+        `UPDATE upload_batches
+         SET processed_files = processed_files + 1,
+             status = CASE
+               WHEN processed_files + 1 + failed_files + skipped_files >= total_files THEN 'completed'
+               ELSE 'processing'
+             END,
+             completed_at = CASE
+               WHEN processed_files + 1 + failed_files + skipped_files >= total_files THEN COALESCE(completed_at, now())
+               ELSE completed_at
+             END
+         WHERE id = $1`,
+        [batchId],
+      );
+      return;
+    }
+
+    await client.query(
       `UPDATE upload_batches
-       SET processed_files = processed_files + 1,
+       SET failed_files = failed_files + 1,
            status = CASE
-             WHEN processed_files + 1 + failed_files + skipped_files >= total_files THEN 'completed'
+             WHEN processed_files + failed_files + 1 + skipped_files >= total_files THEN 'completed'
              ELSE 'processing'
            END,
            completed_at = CASE
-             WHEN processed_files + 1 + failed_files + skipped_files >= total_files THEN COALESCE(completed_at, now())
+             WHEN processed_files + failed_files + 1 + skipped_files >= total_files THEN COALESCE(completed_at, now())
              ELSE completed_at
            END
        WHERE id = $1`,
       [batchId],
     );
-    return;
-  }
-
-  await pool.query(
-    `UPDATE upload_batches
-     SET failed_files = failed_files + 1,
-         status = CASE
-           WHEN processed_files + failed_files + 1 + skipped_files >= total_files THEN 'completed'
-           ELSE 'processing'
-         END,
-         completed_at = CASE
-           WHEN processed_files + failed_files + 1 + skipped_files >= total_files THEN COALESCE(completed_at, now())
-           ELSE completed_at
-         END
-     WHERE id = $1`,
-    [batchId],
-  );
+  });
 }
 
 async function finishScoredFiles(candidateId: string): Promise<void> {
