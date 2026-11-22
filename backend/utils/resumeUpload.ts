@@ -33,12 +33,18 @@ export function validateResumeFile(
   return file;
 }
 
+// Seeker resumes stay under resumes/<userId>/. Recruiter CVs pass folder "cvs"
+// and a candidate id: cvs/<workspaceId>/<candidateId>/<uuid>.<ext>
 export async function uploadResume(
   file: Express.Multer.File,
-  userId: string,
+  ownerId: string,
+  options?: { folder?: "resumes" | "cvs"; candidateId?: string },
 ): Promise<string> {
   const extension = file.mimetype === "application/pdf" ? "pdf" : "docx";
-  const key = `resumes/${userId}/${randomUUID()}.${extension}`;
+  const folder = options?.folder ?? "resumes";
+  const key = options?.candidateId
+    ? `${folder}/${ownerId}/${options.candidateId}/${randomUUID()}.${extension}`
+    : `${folder}/${ownerId}/${randomUUID()}.${extension}`;
   await s3.send(
     new PutObjectCommand({
       Bucket: requiredEnv("S3_BUCKET_NAME"),

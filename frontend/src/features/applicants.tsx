@@ -1,3 +1,4 @@
+import AddRoleCvs from "@/components/add-role-cvs";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -250,6 +251,7 @@ const JobApplicants = () => {
   return (
     <div className="py-18 px-6 font-inter relative">
       <h2 className="font-semibold text-2xl text-black">Applicants</h2>
+      {selectedJob ? <AddRoleCvs key={selectedJob} jobId={selectedJob} /> : null}
       <div className="mt-7 w-full flex flex-row items-start gap-7.5">
         <div className="w-[70%]">
           <h4 className="text-xl font-medium text-black">
