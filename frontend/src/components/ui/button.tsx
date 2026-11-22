@@ -14,7 +14,7 @@ export const buttonVariants = cva(
           "bg-destructive text-white shadow-xs hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60",
         outline:
           "bg-white text-[rgba(16,15,15,1)] border border-black font-medium",
-        primary: "bg-purple text-white",
+        primary: "bg-purple text-white hover:bg-purple-hover",
         secondary:
           "bg-secondary text-secondary-foreground shadow-xs hover:bg-secondary/80",
         ghost: "bg-purple opacity-50 text-white cursor-not-allowed",

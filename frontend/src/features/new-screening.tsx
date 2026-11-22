@@ -48,7 +48,7 @@ export default function NewScreening() {
     <div className="py-18 px-6">
       <h1 className="text-2xl font-semibold text-black">New screening</h1>
       <p className="mt-2 max-w-2xl text-[#4A4A4A]">
-        Type a short role line, or paste a full job description, and drop the CVs. Shortlistly creates the role and scores each CV against it.
+        Paste a job description or a short line, such as “Senior Node developer, 5+ years”, and drop the CVs here. Shortlistly scores each CV. You make the final call.
       </p>
       <form className="mt-8 max-w-3xl" onSubmit={submit}>
         <label htmlFor="role" className="text-sm font-medium text-black">

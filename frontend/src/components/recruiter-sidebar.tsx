@@ -34,7 +34,7 @@ const RecruiterSidebar = () => {
               <Element4
                 size="22"
                 variant="Bold"
-                color={isActive ? "rgba(110,98,229,1)" : "rgba(41,45,50,1)"}
+                color={isActive ? "#0F766E" : "rgba(41,45,50,1)"}
               />
               <p
                 className={`${
@@ -56,7 +56,7 @@ const RecruiterSidebar = () => {
               <Profile2User
                 size="22"
                 variant="Bold"
-                color={isActive ? "rgba(110,98,229,1)" : "rgba(41,45,50,1)"}
+                color={isActive ? "#0F766E" : "rgba(41,45,50,1)"}
               />{" "}
               <p
                 className={`${
