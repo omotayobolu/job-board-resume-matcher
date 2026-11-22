@@ -10,6 +10,7 @@ import JobseekerProfile from "./features/create-jobseeker-profile";
 import DashboardLayout from "./components/dashboard-layout";
 import Messages from "./features/messages";
 import JobApplicants from "./features/applicants";
+import NewScreening from "./features/new-screening";
 import JobSeekerProfilePage from "./features/jobseeker-profile";
 
 function App() {
@@ -43,6 +44,7 @@ function App() {
             }
           />
           <Route path="applicants/:jobId" element={<JobApplicants />} />
+          <Route path="screenings/new" element={<NewScreening />} />
           <Route path="messages/" element={<Messages />} />
           <Route path="messages/:userId" element={<Messages />} />
         </Route>

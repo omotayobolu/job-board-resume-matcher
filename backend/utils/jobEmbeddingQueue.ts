@@ -1,22 +1,23 @@
 import type { PoolClient } from "pg";
 import type { PgBoss, Db } from "pg-boss" with { "resolution-mode": "import" };
 import pool from "../db";
-import { requiredEnv } from "../env";
 import type { JobDetails } from "../types/domain";
 import { parseJobDescription } from "./parseResume";
 import { embedJob } from "./embed";
 import { vectorLiteral } from "./vector";
 import { errorHandler } from "./error-handler";
+import { getQueueBoss, queuePolicy, startQueueBoss, stopQueueBoss } from "./queueBoss";
 
 const QUEUE = "job-embedding";
-const RETRY_LIMIT = 2;
 type EmbeddingJob = { jobId: string };
 type JobToEmbed = JobDetails & { id: string; has_embedding: boolean };
-let boss: PgBoss | null = null;
 
 function getBoss(): PgBoss {
-  if (!boss) throw new Error("Job embedding queue is not ready");
-  return boss;
+  try {
+    return getQueueBoss();
+  } catch {
+    throw new Error("Job embedding queue is not ready");
+  }
 }
 
 async function enqueue(client: PoolClient, jobId: string): Promise<string> {
@@ -66,7 +67,7 @@ export async function processJobEmbedding(job: { data: EmbeddingJob; retryCount:
   } catch (error) {
     errorHandler.handleError(error);
     await pool.query("UPDATE jobs SET embedding_status = $1 WHERE id = $2", [
-      job.retryCount >= RETRY_LIMIT ? "failed" : "pending", jobId,
+      job.retryCount >= queuePolicy.retryLimit ? "failed" : "pending", jobId,
     ]);
     throw error;
   }
@@ -90,15 +91,8 @@ async function enqueueUnqueuedJobs(): Promise<void> {
 }
 
 async function start(): Promise<void> {
-  const { PgBoss } = await import("pg-boss");
-  const instance = new PgBoss({ connectionString: requiredEnv("DATABASE_URL") });
-  instance.on("error", (error) => errorHandler.handleError(error));
-  await instance.start();
-  await instance.createQueue(QUEUE, {
-    retryLimit: RETRY_LIMIT, retryDelay: 30, retryBackoff: true,
-    expireInSeconds: 1800, heartbeatSeconds: 60,
-  });
-  boss = instance;
+  const instance = await startQueueBoss();
+  await instance.createQueue(QUEUE, queuePolicy);
   await enqueueUnqueuedJobs();
   await instance.work<EmbeddingJob>(QUEUE, async ([job]) => {
     if (job) await processJobEmbedding(job);
@@ -106,8 +100,7 @@ async function start(): Promise<void> {
 }
 
 async function stop(): Promise<void> {
-  if (boss) await boss.stop();
-  boss = null;
+  await stopQueueBoss();
 }
 
 export const jobEmbeddingQueue = { enqueue, start, stop };

@@ -7,11 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import { fetchRecruiterJobs } from "@/lib/jobs-api";
 import { useLogout } from "@/hooks/use-logout";
 
-type DialogProps = {
-  dialogOpen: () => void;
-};
-
-const RecruiterSidebar = ({ dialogOpen }: DialogProps) => {
+const RecruiterSidebar = () => {
   const user = useSelector(selectUser);
   const { logout, isLoggingOut } = useLogout();
   const { data: jobs } = useQuery({
@@ -73,9 +69,9 @@ const RecruiterSidebar = ({ dialogOpen }: DialogProps) => {
           variant="primary"
           size="sm"
           className="py-4.5 px-8 h-[58px] text-lg font-bold rounded-2xl mt-14"
-          onClick={dialogOpen}
+          asChild
         >
-          Post a job
+          <NavLink to="/dashboard/screenings/new">New screening</NavLink>
         </Button>
       </nav>
 

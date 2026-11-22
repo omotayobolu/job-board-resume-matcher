@@ -9,10 +9,10 @@ import { resumeOutputSchema } from "../schemas";
 import { embedResume } from "./embed";
 import { errorHandler } from "./error-handler";
 import { parseResumeFile } from "./parseResume";
+import { getQueueBoss, queuePolicy, startQueueBoss, stopQueueBoss } from "./queueBoss";
 import { vectorLiteral } from "./vector";
 
 const QUEUE = "resume-processing";
-const RETRY_LIMIT = 2;
 type ResumeJob = { profileId: string };
 type ProfileToProcess = {
   id: string;
@@ -22,11 +22,12 @@ type ProfileToProcess = {
   has_embedding: boolean;
 };
 
-let boss: PgBoss | null = null;
-
 function getBoss(): PgBoss {
-  if (!boss) throw new Error("Resume queue is not ready");
-  return boss;
+  try {
+    return getQueueBoss();
+  } catch {
+    throw new Error("Resume queue is not ready");
+  }
 }
 
 function transactionDb(client: PoolClient): Db {
@@ -111,7 +112,7 @@ export async function processResumeJob(job: { id: string; data: ResumeJob; retry
       `UPDATE job_seeker
        SET resume_processing_status = $4, resume_processing_token = NULL
        WHERE id = $1 AND resume_job_id = $2 AND resume_processing_token = $3`,
-      [profile.id, job.id, token, job.retryCount >= RETRY_LIMIT ? "failed" : "pending"],
+      [profile.id, job.id, token, job.retryCount >= queuePolicy.retryLimit ? "failed" : "pending"],
     );
     throw error; // pg-boss applies retry/backoff and records terminal failure.
   }
@@ -142,19 +143,8 @@ async function enqueueUnqueuedProfiles(): Promise<void> {
 }
 
 async function start(): Promise<void> {
-  // pg-boss is ESM; this dynamic import works in the backend's CommonJS build.
-  const { PgBoss } = await import("pg-boss");
-  const instance = new PgBoss({ connectionString: requiredEnv("DATABASE_URL") });
-  instance.on("error", (error) => errorHandler.handleError(error));
-  await instance.start();
-  await instance.createQueue(QUEUE, {
-    retryLimit: RETRY_LIMIT,
-    retryDelay: 30,
-    retryBackoff: true,
-    expireInSeconds: 1800,
-    heartbeatSeconds: 60,
-  });
-  boss = instance;
+  const instance = await startQueueBoss();
+  await instance.createQueue(QUEUE, queuePolicy);
   await enqueueUnqueuedProfiles();
   await instance.work<ResumeJob>(QUEUE, async ([job]) => {
     if (job) await processResumeJob(job);
@@ -162,8 +152,7 @@ async function start(): Promise<void> {
 }
 
 async function stop(): Promise<void> {
-  if (boss) await boss.stop();
-  boss = null;
+  await stopQueueBoss();
 }
 
 export const resumeQueue = { enqueue, jobState, start, stop };

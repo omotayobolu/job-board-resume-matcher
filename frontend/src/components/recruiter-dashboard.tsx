@@ -12,7 +12,7 @@ import { selectUser } from "@/store/userSlice";
 import { useQuery } from "@tanstack/react-query";
 import { fetchRecruiterJobs } from "@/lib/jobs-api";
 import { Badge } from "./ui/badge";
-import { useNavigate } from "react-router";
+import { Link, useNavigate } from "react-router";
 
 const formatDate = (dateString: string): string => {
   if (!dateString) return "";
@@ -111,7 +111,10 @@ const RecruiterDashboard = () => {
                 ) : (
                   <TableRow>
                     <TableCell colSpan={5} className="text-center py-4">
-                      No jobs posted
+                      No roles yet.{" "}
+                      <Link to="/dashboard/screenings/new" className="font-semibold text-purple">
+                        New screening
+                      </Link>
                     </TableCell>
                   </TableRow>
                 )}
