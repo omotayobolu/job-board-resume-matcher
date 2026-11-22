@@ -8,6 +8,13 @@ export type ExtractedCv = {
   mimetype: typeof PDF_MIME | typeof DOCX_MIME;
 };
 
+export type SkippedZipEntry = {
+  filename: string;
+  reason: string;
+};
+
+export const unsupportedCvReason = "Not a PDF or DOCX file.";
+
 function badRequest(message: string): CustomError {
   return new CustomError("BAD REQUEST", HttpStatusCode.BAD_REQUEST, message, true);
 }
@@ -79,7 +86,8 @@ function zipFailure(error: unknown): Error {
 
 // Read CV files out of a zip. Rejects encrypted archives, unsafe paths, and
 // uncompressed output over the configured cap. Skips __MACOSX and other junk.
-export async function extractCvZip(zipBuffer: Buffer): Promise<ExtractedCv[]> {
+// A notes.txt (or any other non-CV) is reported as skipped and does not reject the zip.
+export async function extractCvZip(zipBuffer: Buffer): Promise<{ files: ExtractedCv[]; skipped: SkippedZipEntry[] }> {
   if (zipBuffer.length > uploadLimits.maxZipBytes) {
     throw badRequest("Zip archives must be 50 MB or smaller.");
   }
@@ -97,6 +105,7 @@ export async function extractCvZip(zipBuffer: Buffer): Promise<ExtractedCv[]> {
   }
 
   const files: ExtractedCv[] = [];
+  const skipped: SkippedZipEntry[] = [];
   let uncompressedTotal = 0;
   let entries = 0;
   try {
@@ -124,7 +133,8 @@ export async function extractCvZip(zipBuffer: Buffer): Promise<ExtractedCv[]> {
       const extension = extensionOf(entry.fileName);
       const filename = baseName(entry.fileName);
       if (!extension) {
-        throw badRequest(`"${filename}" is not a PDF or DOCX file.`);
+        skipped.push({ filename, reason: unsupportedCvReason });
+        continue;
       }
       if (entry.uncompressedSize > uploadLimits.maxResumeBytes) {
         throw badRequest(`"${filename}" is larger than 10 MB.`);
@@ -151,5 +161,5 @@ export async function extractCvZip(zipBuffer: Buffer): Promise<ExtractedCv[]> {
     zipfile.close();
   }
 
-  return files;
+  return { files, skipped };
 }

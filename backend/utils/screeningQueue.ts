@@ -14,10 +14,21 @@ import { vectorLiteral } from "./vector";
 
 const QUEUE = "screening-cv";
 
+// Scoring waits on the role embedding. This is not a parse failure, so it does not
+// use the queue retry limit. A follow-up job is delayed until the deadline.
+export const scoreWait = {
+  maxMs: 10 * 60 * 1000,
+  delaySeconds: 20,
+} as const;
+
+const scoreTimeoutReason = "The role embedding was not ready within 10 minutes.";
+
 export type ScreeningCvJob = {
   candidateId: string;
   screeningId: string;
   batchFileId: string;
+  scoreOnly?: boolean;
+  scoreDeadline?: string;
 };
 
 type ClaimedCandidate = {
@@ -33,13 +44,6 @@ type ScreeningState = {
   has_job_embedding: boolean;
 };
 
-class JobEmbeddingNotReady extends Error {
-  constructor() {
-    super("Job embedding is not ready");
-    this.name = "JobEmbeddingNotReady";
-  }
-}
-
 class CandidateStillProcessing extends Error {
   constructor() {
     super("Candidate resume is still processing");
@@ -54,6 +58,15 @@ function transactionDb(client: PoolClient): Db {
 async function enqueue(client: PoolClient, payload: ScreeningCvJob): Promise<string> {
   const id = await getQueueBoss().send(QUEUE, payload, { db: transactionDb(client) });
   if (!id) throw new Error("Could not enqueue screening");
+  return id;
+}
+
+// A new queue job, not a retry of the parse job. startAfter keeps it off the retry budget.
+async function scheduleScore(payload: ScreeningCvJob, delaySeconds: number): Promise<string> {
+  const id = await getQueueBoss().send(QUEUE, payload, {
+    startAfter: new Date(Date.now() + delaySeconds * 1000),
+  });
+  if (!id) throw new Error("Could not schedule scoring");
   return id;
 }
 
@@ -103,7 +116,6 @@ async function ensureParsed(job: { id: string; data: ScreeningCvJob; retryCount:
         ?? (candidate.resume_s3_key.toLowerCase().endsWith(".pdf")
           ? "application/pdf"
           : "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
-      // parseResumeFile already accepts PDF and DOCX, so DOCX needs no extra extractor.
       parsed = await parseResumeFile(buffer, mimeType);
       const savedParse = await pool.query(
         `UPDATE candidates
@@ -166,13 +178,13 @@ async function screeningState(screeningId: string): Promise<ScreeningState | und
 }
 
 // Move a file to a terminal status once. A second delivery must not bump counters again.
-async function finishBatchFile(fileId: string, status: "completed" | "failed"): Promise<void> {
+async function finishBatchFile(fileId: string, status: "completed" | "failed", reason?: string): Promise<void> {
   const updated = await pool.query<{ batch_id: string }>(
     `UPDATE upload_batch_files
-     SET status = $2
+     SET status = $2, reason = COALESCE($3, reason)
      WHERE id = $1 AND status IN ('pending', 'processing')
      RETURNING batch_id`,
-    [fileId, status],
+    [fileId, status, reason ?? null],
   );
   const batchId = updated.rows[0]?.batch_id;
   if (!batchId) return;
@@ -235,6 +247,24 @@ async function releaseFile(fileId: string): Promise<void> {
   );
 }
 
+async function deferScore(data: ScreeningCvJob): Promise<void> {
+  const deadline = data.scoreDeadline && !Number.isNaN(Date.parse(data.scoreDeadline))
+    ? data.scoreDeadline
+    : new Date(Date.now() + scoreWait.maxMs).toISOString();
+  if (Date.parse(deadline) <= Date.now()) {
+    await finishBatchFile(data.batchFileId, "failed", scoreTimeoutReason);
+    return;
+  }
+  await screeningQueue.scheduleScore({
+    candidateId: data.candidateId,
+    screeningId: data.screeningId,
+    batchFileId: data.batchFileId,
+    scoreOnly: true,
+    scoreDeadline: deadline,
+  }, scoreWait.delaySeconds);
+  await releaseFile(data.batchFileId);
+}
+
 export async function processScreeningCv(job: { id: string; data: ScreeningCvJob; retryCount: number }): Promise<void> {
   const file = await pool.query<{ status: string }>(
     `SELECT status FROM upload_batch_files WHERE id = $1`,
@@ -255,17 +285,26 @@ export async function processScreeningCv(job: { id: string; data: ScreeningCvJob
   );
 
   try {
-    await ensureParsed(job);
+    if (job.data.scoreOnly) {
+      const existing = await loadCandidate(job.data.candidateId);
+      // The parse job already called OpenAI. This job only waits for the role embedding.
+      if (!existing?.parsed_resume || !existing.has_embedding) {
+        await deferScore(job.data);
+        return;
+      }
+    } else {
+      await ensureParsed(job);
+    }
     await scoreReadyScreenings(job.data.candidateId);
     const state = await screeningState(job.data.screeningId);
     if (!state) return;
     if (state.score === null) {
-      // Parsed data stays on the candidate. The next attempt only scores.
-      throw new JobEmbeddingNotReady();
+      await deferScore(job.data);
+      return;
     }
     await finishScoredFiles(job.data.candidateId);
   } catch (error) {
-    if (!(error instanceof JobEmbeddingNotReady) && !(error instanceof CandidateStillProcessing)) {
+    if (!(error instanceof CandidateStillProcessing)) {
       errorHandler.handleError(error);
     }
     if (job.retryCount >= queuePolicy.retryLimit) {
@@ -321,4 +360,4 @@ async function stop(): Promise<void> {
   await stopQueueBoss();
 }
 
-export const screeningQueue = { enqueue, start, stop };
+export const screeningQueue = { enqueue, scheduleScore, start, stop };

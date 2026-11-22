@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS public.upload_batch_files (
   filename text NOT NULL,
   status text NOT NULL DEFAULT 'pending'
     CHECK (status IN ('pending', 'processing', 'completed', 'failed', 'skipped')),
+  reason text,
   created_at timestamp without time zone DEFAULT now()
 );
 

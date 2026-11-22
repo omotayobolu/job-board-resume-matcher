@@ -6,6 +6,7 @@ export type UploadBatchFile = {
   id: string;
   filename: string;
   status: BatchFileStatus;
+  reason: string | null;
   candidate_id: string | null;
   screening_id: string | null;
 };

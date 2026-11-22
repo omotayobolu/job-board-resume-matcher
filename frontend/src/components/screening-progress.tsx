@@ -69,9 +69,12 @@ export default function ScreeningProgress({ jobId, batchId, showRoleLink }: Scre
       </p>
       <ul className="mt-4 flex flex-col gap-2">
         {data.files.map((file) => (
-          <li key={file.id} className="flex items-center justify-between text-sm">
+          <li key={file.id} className="flex items-start justify-between gap-3 text-sm">
             <span className="text-black">{file.filename}</span>
-            <span className="capitalize text-[#4A4A4A]">{file.status}</span>
+            <span className="text-right text-[#4A4A4A]">
+              <span className="capitalize">{file.status}</span>
+              {file.reason ? <span className="block text-xs">{file.reason}</span> : null}
+            </span>
           </li>
         ))}
       </ul>

@@ -1,7 +1,10 @@
+import mammoth from "mammoth";
 import { z } from "zod";
 import cleanAndParseJSON from "./cleanParseJson";
 import { completionSchema, jobOutputSchema } from "../schemas";
 import { requiredEnv } from "../env";
+
+const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
 const string = { type: "string" } as const;
 const strings = { type: "array", items: string } as const;
@@ -116,22 +119,35 @@ async function parseResume(content: unknown) {
   }
 }
 
-const parseResumeFile = (buffer: Buffer, mimeType: string) => {
-  const extension = mimeType === "application/pdf" ? "pdf"
-    : mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ? "docx"
-    : null;
-  if (!extension) throw new Error("Unsupported resume file type");
+// DOCX is unzipped locally. OpenAI receives the text, not the .docx bytes.
+async function extractDocxText(buffer: Buffer): Promise<string> {
+  try {
+    const result = await mammoth.extractRawText({ buffer });
+    const text = result.value.trim();
+    if (!text) throw new Error("DOCX contained no text");
+    return text;
+  } catch (err) {
+    throw new Error("Resume parsing failed", { cause: err });
+  }
+}
+
+const parseResumeFile = async (buffer: Buffer, mimeType: string) => {
+  if (mimeType === DOCX_MIME) {
+    return parseResume([{ type: "input_text", text: await extractDocxText(buffer) }]);
+  }
+  if (mimeType !== "application/pdf") throw new Error("Unsupported resume file type");
   return parseResume([
     { type: "input_text", text: "Extract this resume into the requested JSON schema." },
     {
       type: "input_file",
-      filename: `resume.${extension}`,
+      filename: "resume.pdf",
       file_data: `data:${mimeType};base64,${buffer.toString("base64")}`,
     },
   ]);
 };
 
-// Kept for callers that already have text; uploaded PDFs and DOCX use parseResumeFile.
+// Kept for callers that already have text. Uploaded PDFs use parseResumeFile.
+// DOCX goes through parseResumeFile, which extracts text and then calls this.
 const parseResumeText = (resumeText: string) => parseResume([
   { type: "input_text", text: resumeText },
 ]);

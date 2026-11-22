@@ -48,9 +48,11 @@ const vectorLiteral = `[${vector.join(",")}]`;
 
 type StoredObject = { body: Buffer; contentType: string };
 type Queued = { id: string; payload: ScreeningCvJob };
+type Scheduled = { id: string; payload: ScreeningCvJob; delaySeconds: number };
 
 const objects = new Map<string, StoredObject>();
 const queued: Queued[] = [];
+const scheduled: Scheduled[] = [];
 let parseCalls = 0;
 let embedCalls = 0;
 let failParse = false;
@@ -147,6 +149,28 @@ function buildZip(entries: ZipEntryInput[]): Buffer {
   return Buffer.concat([...locals, centralBuf, eocd]);
 }
 
+function minimalDocx(text: string): Buffer {
+  const document = Buffer.from(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body><w:p><w:r><w:t>${text}</w:t></w:r></w:p></w:body>
+</w:document>`);
+  const types = Buffer.from(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+</Types>`);
+  const rels = Buffer.from(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+</Relationships>`);
+  return buildZip([
+    { name: "[Content_Types].xml", data: types },
+    { name: "_rels/.rels", data: rels },
+    { name: "word/document.xml", data: document },
+  ]);
+}
+
 async function invoke(
   handler: (req: Request, res: Response, next: NextFunction) => Promise<void>,
   req: Partial<Request>,
@@ -180,6 +204,8 @@ describe("screening uploads", { concurrency: 1 }, () => {
   let getBatch: typeof import("../controllers/screeningController.js").getBatch;
   let retryBatch: typeof import("../controllers/screeningController.js").retryBatch;
   let processScreeningCv: typeof import("../utils/screeningQueue.js").processScreeningCv;
+  let scoreDelaySeconds = 0;
+  let scoreWaitMs = 0;
   let adaWorkspace = "";
   let graceWorkspace = "";
 
@@ -201,6 +227,7 @@ describe("screening uploads", { concurrency: 1 }, () => {
     try {
       await client.query(sqlFile("setup.sql"));
       await client.query(sqlFile("20261123_upload_batch_files.sql"));
+      await client.query(sqlFile("20261124_upload_batch_file_reason.sql"));
       await client.query(
         `INSERT INTO users (id, email, full_name, role, password_hash, hasprofile, created_at)
          VALUES ($1, 'ada@example.com', 'Ada Lovelace', 'recruiter', 'x', true, NOW()),
@@ -231,6 +258,8 @@ describe("screening uploads", { concurrency: 1 }, () => {
     getBatch = controller.getBatch;
     retryBatch = controller.retryBatch;
     processScreeningCv = screeningQueueModule.processScreeningCv;
+    scoreDelaySeconds = screeningQueueModule.scoreWait.delaySeconds;
+    scoreWaitMs = screeningQueueModule.scoreWait.maxMs;
 
     s3Module.s3.send = (async (command: unknown) => {
       if (command instanceof PutObjectCommand) {
@@ -256,6 +285,11 @@ describe("screening uploads", { concurrency: 1 }, () => {
     screeningQueueModule.screeningQueue.enqueue = async (_client, payload) => {
       const id = randomUUID();
       queued.push({ id, payload });
+      return id;
+    };
+    screeningQueueModule.screeningQueue.scheduleScore = async (payload, delaySeconds) => {
+      const id = randomUUID();
+      scheduled.push({ id, payload, delaySeconds });
       return id;
     };
     jobQueueModule.jobEmbeddingQueue.enqueue = async () => randomUUID();
@@ -304,10 +338,11 @@ describe("screening uploads", { concurrency: 1 }, () => {
 
   test("mixed PDFs and a zip create one screening per valid CV and skip junk", async () => {
     const adaPdf = Buffer.from("%PDF-ada");
-    const graceDoc = Buffer.from("PK-grace-docx");
+    const graceDoc = minimalDocx("Grace Hopper");
     const zip = buildZip([
       { name: "team/nia.pdf", data: Buffer.from("%PDF-nia") },
-      { name: "team/lin.docx", data: Buffer.from("PK-lin-docx") },
+      { name: "team/lin.docx", data: minimalDocx("Lin") },
+      { name: "team/notes.txt", data: Buffer.from("hello") },
       { name: "__MACOSX/._nia.pdf", data: Buffer.from("junk") },
       { name: ".DS_Store", data: Buffer.from("store") },
       { name: "team/", data: Buffer.alloc(0) },
@@ -321,8 +356,8 @@ describe("screening uploads", { concurrency: 1 }, () => {
     assert.equal(created.error, undefined);
     assert.equal(created.statusCode, 201);
     const body = created.body as { job_id: string; batch_id: string; total_files: number; skipped_files: number };
-    assert.equal(body.total_files, 4);
-    assert.equal(body.skipped_files, 0);
+    assert.equal(body.total_files, 5);
+    assert.equal(body.skipped_files, 1);
 
     const jobs = await query<{ job_title: string; job_description: string; workspace_id: string }>(
       `SELECT job_title, job_description, workspace_id FROM jobs WHERE id = $1`,
@@ -361,12 +396,21 @@ describe("screening uploads", { concurrency: 1 }, () => {
     assert.equal(screenings.find((row) => row.filename === "ada.pdf")?.sha, sha(adaPdf));
 
     const batch = await asUser(adaId, getBatch, {}, [], { jobId: body.job_id, batchId: body.batch_id });
-    const view = batch.body as { status: string; processed_files: number; failed_files: number; skipped_files: number; files: { filename: string }[] };
+    const view = batch.body as {
+      status: string;
+      processed_files: number;
+      failed_files: number;
+      skipped_files: number;
+      files: { filename: string; status: string; reason: string | null }[];
+    };
     assert.equal(view.status, "completed");
     assert.equal(view.processed_files, 4);
     assert.equal(view.failed_files, 0);
-    assert.equal(view.skipped_files, 0);
+    assert.equal(view.skipped_files, 1);
     assert.equal(view.files.some((file) => file.filename.includes("__MACOSX") || file.filename === ".DS_Store"), false);
+    const notes = view.files.find((file) => file.filename === "notes.txt");
+    assert.equal(notes?.status, "skipped");
+    assert.equal(notes?.reason, "Not a PDF or DOCX file.");
   });
 
   test("oversized and unsupported files are rejected", async () => {
@@ -385,7 +429,17 @@ describe("screening uploads", { concurrency: 1 }, () => {
     const unsupportedZip = await asUser(adaId, createScreening, { role: "Zip notes" }, [
       uploadFile("notes.zip", zip),
     ]);
-    assert.match((unsupportedZip.error as Error).message, /not a PDF or DOCX/);
+    assert.equal(unsupportedZip.error, undefined);
+    const notesBody = unsupportedZip.body as { job_id: string; batch_id: string; total_files: number; skipped_files: number };
+    assert.equal(notesBody.total_files, 1);
+    assert.equal(notesBody.skipped_files, 1);
+    const notesBatch = await asUser(adaId, getBatch, {}, [], { jobId: notesBody.job_id, batchId: notesBody.batch_id });
+    const notesView = notesBatch.body as { status: string; files: { filename: string; status: string; reason: string | null; candidate_id: string | null }[] };
+    assert.equal(notesView.status, "completed");
+    assert.equal(notesView.files[0]?.filename, "notes.txt");
+    assert.equal(notesView.files[0]?.status, "skipped");
+    assert.equal(notesView.files[0]?.reason, "Not a PDF or DOCX file.");
+    assert.equal(notesView.files[0]?.candidate_id, null);
 
     const hugeZip = await asUser(adaId, createScreening, { role: "Huge zip" }, [
       uploadFile("huge.zip", Buffer.alloc(uploadLimits.maxZipBytes + 1, 1)),
@@ -393,7 +447,11 @@ describe("screening uploads", { concurrency: 1 }, () => {
     assert.match((hugeZip.error as Error).message, /50 MB/);
 
     const batchesAfter = await query("SELECT id FROM upload_batches");
-    assert.equal(batchesAfter.length, batchesBefore.length);
+    assert.equal(batchesAfter.length, batchesBefore.length + 1);
+    const rejectedJobs = await query(
+      `SELECT id FROM jobs WHERE job_title IN ('Too big', 'Notes', 'Huge zip')`,
+    );
+    assert.equal(rejectedJobs.length, 0);
   });
 
   test("unsafe and encrypted zips are rejected", async () => {
@@ -448,9 +506,10 @@ describe("screening uploads", { concurrency: 1 }, () => {
     assert.equal(skipped.skipped_files, 1);
     assert.equal(queued.length, queuedBefore);
     const view = await asUser(adaId, getBatch, {}, [], { jobId, batchId: skipped.batch_id });
-    const batch = view.body as { status: string; files: { status: string }[] };
+    const batch = view.body as { status: string; files: { status: string; reason: string | null }[] };
     assert.equal(batch.status, "completed");
     assert.equal(batch.files[0]?.status, "skipped");
+    assert.equal(batch.files[0]?.reason, "Already on this role.");
     const afterCandidates = await query("SELECT id FROM candidates");
     const afterScreenings = await query("SELECT id FROM screenings WHERE job_id = $1", [jobId]);
     assert.equal(afterCandidates.length, beforeCandidates.length);
@@ -483,20 +542,26 @@ describe("screening uploads", { concurrency: 1 }, () => {
     assert.equal(Number(rows[1]?.score), 1);
   });
 
-  test("a missing role embedding waits without parsing again", async () => {
+  test("a missing role embedding is rescheduled without using the parse retry budget", async () => {
     const parsesBefore = parseCalls;
     const queuedAt = queued.length;
+    const scheduledAt = scheduled.length;
     const created = await asUser(adaId, createScreening, { role: "Waiting on the role embedding" }, [
       uploadFile("wait.pdf", Buffer.from("%PDF-wait")),
     ]);
     const body = created.body as { job_id: string };
     const job = queued[queuedAt];
     assert.ok(job);
-    await assert.rejects(
-      processScreeningCv({ id: job.id, data: job.payload, retryCount: 0 }),
-      /Job embedding is not ready/,
-    );
+    // retryCount is already at the parse limit. Waiting must not fail the file.
+    await processScreeningCv({ id: job.id, data: job.payload, retryCount: 2 });
     assert.equal(parseCalls, parsesBefore + 1);
+    const followUp = scheduled[scheduledAt];
+    assert.ok(followUp);
+    assert.equal(followUp.delaySeconds, scoreDelaySeconds);
+    assert.equal(followUp.payload.scoreOnly, true);
+    assert.equal(followUp.payload.batchFileId, job.payload.batchFileId);
+    const deadline = Date.parse(followUp.payload.scoreDeadline ?? "");
+    assert.ok(deadline > Date.now() + scoreWaitMs - 5_000);
     const mid = await query<{ score: number | null; status: string; has_embedding: boolean }>(
       `SELECT s.score, f.status, c.embedding IS NOT NULL AS has_embedding
        FROM upload_batch_files f
@@ -509,14 +574,13 @@ describe("screening uploads", { concurrency: 1 }, () => {
     assert.equal(mid[0]?.status, "pending");
     assert.equal(mid[0]?.has_embedding, true);
 
-    await assert.rejects(
-      processScreeningCv({ id: job.id, data: job.payload, retryCount: 1 }),
-      /Job embedding is not ready/,
-    );
+    await processScreeningCv({ id: followUp.id, data: followUp.payload, retryCount: 0 });
     assert.equal(parseCalls, parsesBefore + 1);
+    assert.equal(scheduled.length, scheduledAt + 2);
+    assert.equal(scheduled[scheduledAt + 1]?.payload.scoreDeadline, followUp.payload.scoreDeadline);
 
     await setJobEmbedding(body.job_id);
-    await processScreeningCv({ id: job.id, data: job.payload, retryCount: 1 });
+    await processScreeningCv({ id: followUp.id, data: followUp.payload, retryCount: 0 });
     assert.equal(parseCalls, parsesBefore + 1);
     const done = await query<{ score: number; status: string }>(
       `SELECT s.score, f.status FROM upload_batch_files f JOIN screenings s ON s.id = f.screening_id WHERE f.id = $1`,
@@ -524,6 +588,37 @@ describe("screening uploads", { concurrency: 1 }, () => {
     );
     assert.equal(Number(done[0]?.score), 1);
     assert.equal(done[0]?.status, "completed");
+  });
+
+  test("scoring gives up after the wait window without parsing again", async () => {
+    const parsesBefore = parseCalls;
+    const queuedAt = queued.length;
+    const created = await asUser(adaId, createScreening, { role: "Embedding window elapsed" }, [
+      uploadFile("expire.pdf", Buffer.from("%PDF-expire")),
+    ]);
+    assert.equal(created.error, undefined);
+    const body = created.body as { batch_id: string };
+    const job = queued[queuedAt];
+    assert.ok(job);
+    await processScreeningCv({ id: job.id, data: job.payload, retryCount: 0 });
+    assert.equal(parseCalls, parsesBefore + 1);
+    await processScreeningCv({
+      id: job.id,
+      data: { ...job.payload, scoreOnly: true, scoreDeadline: new Date(Date.now() - 1000).toISOString() },
+      retryCount: 0,
+    });
+    assert.equal(parseCalls, parsesBefore + 1);
+    const failed = await query<{ status: string; reason: string; failed_files: number; batch_status: string }>(
+      `SELECT f.status, f.reason, b.failed_files, b.status AS batch_status
+       FROM upload_batch_files f JOIN upload_batches b ON b.id = f.batch_id
+       WHERE f.id = $1`,
+      [job.payload.batchFileId],
+    );
+    assert.equal(failed[0]?.status, "failed");
+    assert.match(failed[0]?.reason ?? "", /10 minutes/);
+    assert.equal(failed[0]?.failed_files, 1);
+    assert.equal(failed[0]?.batch_status, "completed");
+    assert.equal(body.batch_id.length > 0, true);
   });
 
   test("a failed parse retries, then fails, and the retry endpoint runs it again", async () => {

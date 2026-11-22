@@ -15,6 +15,13 @@ export type CvFile = {
   sha256: string;
 };
 
+export type SkippedUpload = {
+  filename: string;
+  reason: string;
+};
+
+const alreadyOnRoleReason = "Already on this role.";
+
 type SeenCandidate = {
   candidateId: string;
   screeningId: string | null;
@@ -74,7 +81,7 @@ function cvFromBuffer(filename: string, buffer: Buffer, mimetype: typeof PDF_MIM
   return { filename, buffer: file.buffer, mimetype, sha256: fileSha256(file.buffer) };
 }
 
-export async function collectCvs(files: Express.Multer.File[]): Promise<CvFile[]> {
+export async function collectCvs(files: Express.Multer.File[]): Promise<{ cvs: CvFile[]; skipped: SkippedUpload[] }> {
   if (files.length === 0) {
     throw badRequest("Add at least one CV (PDF, DOCX, or a zip of CVs).");
   }
@@ -83,6 +90,7 @@ export async function collectCvs(files: Express.Multer.File[]): Promise<CvFile[]
   }
 
   const cvs: CvFile[] = [];
+  const skipped: SkippedUpload[] = [];
   for (const file of files) {
     const extension = extensionOf(file.originalname || "");
     const isZip = extension === "zip" || ZIP_MIMES.has(file.mimetype);
@@ -91,7 +99,8 @@ export async function collectCvs(files: Express.Multer.File[]): Promise<CvFile[]
         throw badRequest("Zip archives must be 50 MB or smaller.");
       }
       const extracted = await extractCvZip(file.buffer);
-      for (const entry of extracted) {
+      skipped.push(...extracted.skipped);
+      for (const entry of extracted.files) {
         cvs.push(cvFromBuffer(entry.filename, entry.buffer, entry.mimetype));
       }
       continue;
@@ -103,13 +112,13 @@ export async function collectCvs(files: Express.Multer.File[]): Promise<CvFile[]
     cvs.push(cvFromBuffer(file.originalname, file.buffer, mimetype));
   }
 
-  if (cvs.length === 0) {
+  if (cvs.length + skipped.length === 0) {
     throw badRequest("No PDF or DOCX files were found in that upload.");
   }
-  if (cvs.length > uploadLimits.maxFilesPerBatch) {
+  if (cvs.length + skipped.length > uploadLimits.maxFilesPerBatch) {
     throw badRequest(`A screening can include at most ${uploadLimits.maxFilesPerBatch} CVs.`);
   }
-  return cvs;
+  return { cvs, skipped };
 }
 
 async function workspaceIdFor(client: PoolClient, userId: string): Promise<string> {
@@ -202,16 +211,17 @@ async function insertScreening(client: PoolClient, jobId: string, candidateId: s
 async function insertBatchFile(
   client: PoolClient,
   batchId: string,
-  candidateId: string,
-  screeningId: string,
+  candidateId: string | null,
+  screeningId: string | null,
   filename: string,
   status: "pending" | "skipped",
+  reason: string | null,
 ): Promise<string> {
   const result = await client.query<{ id: string }>(
-    `INSERT INTO upload_batch_files (batch_id, candidate_id, screening_id, filename, status)
-     VALUES ($1, $2, $3, $4, $5)
+    `INSERT INTO upload_batch_files (batch_id, candidate_id, screening_id, filename, status, reason)
+     VALUES ($1, $2, $3, $4, $5, $6)
      RETURNING id`,
-    [batchId, candidateId, screeningId, filename, status],
+    [batchId, candidateId, screeningId, filename, status, reason],
   );
   const id = result.rows[0]?.id;
   if (!id) throw new Error("Batch file insert returned no row");
@@ -233,7 +243,7 @@ async function insertCandidate(client: PoolClient, workspaceId: string, sha256: 
 // new role reuse the candidate. The same bytes on this role are skipped.
 async function acceptCvs(
   client: PoolClient,
-  args: { workspaceId: string; jobId: string; userId: string; cvs: CvFile[] },
+  args: { workspaceId: string; jobId: string; userId: string; cvs: CvFile[]; skipped: SkippedUpload[] },
 ): Promise<{ batch_id: string; total_files: number; skipped_files: number }> {
   await client.query(`SELECT id FROM workspaces WHERE id = $1 FOR UPDATE`, [args.workspaceId]);
 
@@ -247,20 +257,26 @@ async function acceptCvs(
 
   const queued: ScreeningCvJob[] = [];
   let skipped = 0;
+  const totalFiles = args.cvs.length + args.skipped.length;
   const batch = await client.query<{ id: string }>(
     `INSERT INTO upload_batches
        (workspace_id, job_id, uploaded_by, status, total_files, skipped_files)
      VALUES ($1, $2, $3, 'processing', $4, 0)
      RETURNING id`,
-    [args.workspaceId, args.jobId, args.userId, args.cvs.length],
+    [args.workspaceId, args.jobId, args.userId, totalFiles],
   );
   const batchId = batch.rows[0]?.id;
   if (!batchId) throw new Error("Batch insert returned no row");
 
+  for (const item of args.skipped) {
+    await insertBatchFile(client, batchId, null, null, item.filename, "skipped", item.reason);
+    skipped += 1;
+  }
+
   for (const cv of args.cvs) {
     let known = seen.get(cv.sha256);
     if (known?.screeningId) {
-      await insertBatchFile(client, batchId, known.candidateId, known.screeningId, cv.filename, "skipped");
+      await insertBatchFile(client, batchId, known.candidateId, known.screeningId, cv.filename, "skipped", alreadyOnRoleReason);
       skipped += 1;
       continue;
     }
@@ -285,7 +301,7 @@ async function acceptCvs(
     }
 
     if (known.screeningId) {
-      await insertBatchFile(client, batchId, known.candidateId, known.screeningId, cv.filename, "skipped");
+      await insertBatchFile(client, batchId, known.candidateId, known.screeningId, cv.filename, "skipped", alreadyOnRoleReason);
       skipped += 1;
       continue;
     }
@@ -298,12 +314,12 @@ async function acceptCvs(
         [screeningId, batchId],
       )).rowCount;
     if (alreadyOnRole) {
-      await insertBatchFile(client, batchId, known.candidateId, screeningId, cv.filename, "skipped");
+      await insertBatchFile(client, batchId, known.candidateId, screeningId, cv.filename, "skipped", alreadyOnRoleReason);
       skipped += 1;
       continue;
     }
 
-    const batchFileId = await insertBatchFile(client, batchId, known.candidateId, screeningId, cv.filename, "pending");
+    const batchFileId = await insertBatchFile(client, batchId, known.candidateId, screeningId, cv.filename, "pending", null);
     const queueId = await screeningQueue.enqueue(client, {
       candidateId: known.candidateId,
       screeningId,
@@ -330,7 +346,7 @@ async function acceptCvs(
     [batchId, skipped, done ? "completed" : "processing"],
   );
 
-  return { batch_id: batchId, total_files: args.cvs.length, skipped_files: skipped };
+  return { batch_id: batchId, total_files: totalFiles, skipped_files: skipped };
 }
 
 export async function createRoleWithCvs(
@@ -339,7 +355,7 @@ export async function createRoleWithCvs(
   files: Express.Multer.File[],
 ): Promise<{ job_id: string; batch_id: string; total_files: number; skipped_files: number }> {
   const { job_title, job_description } = roleTextToJob(roleText);
-  const cvs = await collectCvs(files);
+  const collected = await collectCvs(files);
   return pool.transaction(async (client) => {
     const workspaceId = await workspaceIdFor(client, userId);
     const inserted = await client.query<{ id: string }>(
@@ -354,7 +370,7 @@ export async function createRoleWithCvs(
     if (!jobId) throw new Error("Job insert returned no row");
     const queueId = await jobEmbeddingQueue.enqueue(client, jobId);
     await client.query(`UPDATE jobs SET embedding_job_id = $1 WHERE id = $2`, [queueId, jobId]);
-    const batch = await acceptCvs(client, { workspaceId, jobId, userId, cvs });
+    const batch = await acceptCvs(client, { workspaceId, jobId, userId, ...collected });
     return { job_id: jobId, ...batch };
   });
 }
@@ -364,14 +380,14 @@ export async function addCvsToRole(
   jobId: string,
   files: Express.Multer.File[],
 ): Promise<{ job_id: string; batch_id: string; total_files: number; skipped_files: number }> {
-  const cvs = await collectCvs(files);
+  const collected = await collectCvs(files);
   return pool.transaction(async (client) => {
     const job = await ownedJob(client, jobId, userId);
     const batch = await acceptCvs(client, {
       workspaceId: job.workspace_id,
       jobId: job.id,
       userId,
-      cvs,
+      ...collected,
     });
     return { job_id: job.id, ...batch };
   });
@@ -381,6 +397,7 @@ export type BatchFileStatus = {
   id: string;
   filename: string;
   status: string;
+  reason: string | null;
   candidate_id: string | null;
   screening_id: string | null;
 };
@@ -416,7 +433,7 @@ export async function getUploadBatch(userId: string, jobId: string, batchId: str
   const row = batch.rows[0];
   if (!row) throw notFound("Upload not found.");
   const files = await pool.query<BatchFileStatus>(
-    `SELECT id, filename, status, candidate_id, screening_id
+    `SELECT id, filename, status, reason, candidate_id, screening_id
      FROM upload_batch_files
      WHERE batch_id = $1
      ORDER BY created_at, filename`,
@@ -454,7 +471,7 @@ export async function retryFailedCvs(userId: string, jobId: string, batchId: str
         batchFileId: file.id,
       });
       await client.query(
-        `UPDATE upload_batch_files SET status = 'pending' WHERE id = $1 AND status = 'failed'`,
+        `UPDATE upload_batch_files SET status = 'pending', reason = NULL WHERE id = $1 AND status = 'failed'`,
         [file.id],
       );
       if (file.processing_status === "failed") {
