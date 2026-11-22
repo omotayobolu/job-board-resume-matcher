@@ -51,8 +51,8 @@ const SignIn = () => {
   return (
     <AuthLayout
       title="Welcome back"
-      subtitle="Sign in to continue to JobBoard."
-      switchPrompt="New to JobBoard?"
+      subtitle="Sign in to continue to Shortlistly."
+      switchPrompt="New to Shortlistly?"
       switchLabel="Create an account"
       switchTo="/signup"
     >

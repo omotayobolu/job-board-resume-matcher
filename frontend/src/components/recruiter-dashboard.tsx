@@ -126,10 +126,6 @@ const RecruiterDashboard = () => {
               No notifications yet.
             </p>
           </div>
-          <div className="mt-6 max-h-[403px] h-auto overflow-y-auto border-2 border-[rgba(229,229,229,1)] rounded-4xl p-8 bg-white">
-            <h2 className="text-black text-2xl font-semibold">Messages</h2>
-            <p className="mt-7.5 text-sm text-[#4A4A4A]">No messages yet.</p>
-          </div>
           {/* <div className="mt-6.5 py-4 px-8 border-2 border-[rgba(229,229,229,1)] rounded-4xl bg-white">
             <h2 className="text-black text-2xl font-semibold">AI Chatbot</h2>
             <div className="mt-6 relative">
