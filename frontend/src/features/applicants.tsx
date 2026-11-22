@@ -1,4 +1,5 @@
 import AddRoleCvs from "@/components/add-role-cvs";
+import Loading from "@/components/loading";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -236,7 +237,7 @@ const JobApplicants = () => {
       </div>
 
       <div className="mt-7 flex flex-col gap-3">
-        {isLoading ? <p className="text-sm text-[#4A4A4A]">Loading shortlist...</p> : null}
+        {isLoading ? <Loading /> : null}
         {isError ? <p className="text-sm text-[#CC2424]">{getApiErrorMessage(error, "Could not load this shortlist.")}</p> : null}
         {!isLoading && !isError && visible.length === 0 ? (
           <p className="rounded-3xl border border-[#E5E5E5] bg-white p-5 text-sm text-[#4A4A4A]">

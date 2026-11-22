@@ -1,5 +1,6 @@
 import Loading from "@/components/loading";
 import Landing from "@/features/landing";
+import { isApiUnreachable } from "@/lib/api-error";
 import { getHomePath } from "@/lib/auth";
 import { axiosInstance } from "@/lib/axios-instance";
 import type { UserType } from "@/store/userSlice";
@@ -9,6 +10,7 @@ import { Navigate } from "react-router";
 const Redirect = () => {
   const [destination, setDestination] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [apiUnreachable, setApiUnreachable] = useState(false);
   useEffect(() => {
     axiosInstance
       .get<{ user: UserType }>("/auth/me")
@@ -18,11 +20,16 @@ const Redirect = () => {
       })
       .catch((error) => {
         console.error("Error during authentication check:", error);
+        if (isApiUnreachable(error)) setApiUnreachable(true);
         setLoading(false);
       });
   }, []);
   if (loading) {
     return <Loading />;
+  }
+
+  if (apiUnreachable) {
+    return <Navigate to="/login" replace state={{ apiUnreachable: true }} />;
   }
 
   if (!destination) {
