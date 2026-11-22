@@ -29,7 +29,10 @@ export default function ScreeningProgress({ jobId, batchId, showRoleLink }: Scre
     setRetrying(true);
     try {
       await retryUploadBatch(jobId, batchId);
-      await refetch();
+      await Promise.all([
+        refetch(),
+        queryClient.invalidateQueries({ queryKey: ["role-screenings", jobId], exact: true }),
+      ]);
       toast.success("Failed CVs queued again.");
     } catch (retryError) {
       toast.error(getApiErrorMessage(retryError, "Could not retry those CVs."));

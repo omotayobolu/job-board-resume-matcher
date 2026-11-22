@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { axiosInstance } from "@/lib/axios-instance";
+import { openCvWindow } from "@/lib/open-cv";
 import { fetchRecruiterJobs, type Job } from "@/lib/jobs-api";
 import {
   downloadShortlistCsv,
@@ -118,8 +119,7 @@ const JobApplicants = () => {
   const viewCv = async (screeningId: string) => {
     setViewingId(screeningId);
     try {
-      const file = await fetchScreeningCv(screeningId);
-      window.open(file.url, "_blank", "noopener,noreferrer");
+      await openCvWindow(async () => (await fetchScreeningCv(screeningId)).url);
     } catch (cvError) {
       toast.error(getApiErrorMessage(cvError, "Could not open that CV."));
     } finally {

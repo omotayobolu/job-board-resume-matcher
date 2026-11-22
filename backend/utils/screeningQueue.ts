@@ -27,7 +27,8 @@ const scoreTimeoutReason = "The role embedding was not ready within 10 minutes."
 export type ScreeningCvJob = {
   candidateId: string;
   screeningId: string;
-  batchFileId: string;
+  batchFileId?: string;
+  reasonOnly?: boolean;
   scoreOnly?: boolean;
   scoreDeadline?: string;
 };
@@ -67,6 +68,11 @@ async function enqueue(client: PoolClient, payload: ScreeningCvJob): Promise<str
   const id = await getQueueBoss().send(QUEUE, payload, { db: transactionDb(client) });
   if (!id) throw new Error("Could not enqueue screening");
   return id;
+}
+
+async function jobState(jobId: string): Promise<string | undefined> {
+  const jobs = await getQueueBoss().findJobs<ScreeningCvJob>(QUEUE, { id: jobId });
+  return jobs[0]?.state;
 }
 
 // A new queue job, not a retry of the parse job. startAfter keeps it off the retry budget.
@@ -260,7 +266,7 @@ export async function ensureScreeningReasons(job: { id: string; data: ScreeningC
        AND score IS NOT NULL
        AND reason_summary IS NULL
        AND (
-         reason_status IN ('pending', 'failed')
+         (reason_status IN ('pending', 'failed') AND (reason_token IS NULL OR reason_token = $2::uuid))
          OR (reason_status = 'processing' AND reason_token = $2::uuid)
        )
      RETURNING id`,
@@ -304,9 +310,11 @@ export async function ensureScreeningReasons(job: { id: string; data: ScreeningC
   } catch (error) {
     await pool.query(
       `UPDATE screenings
-       SET reason_status = $3, reason_token = NULL
+       SET reason_status = $3, reason_token = $4::uuid
        WHERE id = $1 AND reason_token = $2::uuid AND reason_summary IS NULL`,
-      [screeningId, job.id, job.retryCount >= queuePolicy.retryLimit ? "failed" : "pending"],
+      [screeningId, job.id,
+        job.retryCount >= queuePolicy.retryLimit ? "failed" : job.data.reasonOnly ? "processing" : "pending",
+        job.data.reasonOnly && job.retryCount < queuePolicy.retryLimit ? job.id : null],
     );
     throw error;
   }
@@ -322,6 +330,7 @@ async function releaseFile(fileId: string): Promise<void> {
 }
 
 async function deferScore(data: ScreeningCvJob): Promise<void> {
+  if (!data.batchFileId) throw new Error("Scoring job has no batch file");
   const deadline = data.scoreDeadline && !Number.isNaN(Date.parse(data.scoreDeadline))
     ? data.scoreDeadline
     : new Date(Date.now() + scoreWait.maxMs).toISOString();
@@ -340,22 +349,29 @@ async function deferScore(data: ScreeningCvJob): Promise<void> {
 }
 
 export async function processScreeningCv(job: { id: string; data: ScreeningCvJob; retryCount: number }): Promise<void> {
+  if (job.data.reasonOnly) {
+    await ensureScreeningReasons(job);
+    await finishScoredFiles(job.data.candidateId);
+    return;
+  }
+  const batchFileId = job.data.batchFileId;
+  if (!batchFileId) throw new Error("Screening job has no batch file");
   const file = await pool.query<{ status: string }>(
     `SELECT status FROM upload_batch_files WHERE id = $1`,
-    [job.data.batchFileId],
+    [batchFileId],
   );
   const status = file.rows[0]?.status;
   if (!status || status === "completed" || status === "skipped" || status === "failed") return;
 
   await pool.query(
     `UPDATE upload_batch_files SET status = 'processing' WHERE id = $1 AND status = 'pending'`,
-    [job.data.batchFileId],
+    [batchFileId],
   );
   await pool.query(
     `UPDATE upload_batches SET status = 'processing'
      WHERE id = (SELECT batch_id FROM upload_batch_files WHERE id = $1)
        AND status = 'pending'`,
-    [job.data.batchFileId],
+    [batchFileId],
   );
 
   try {
@@ -383,9 +399,9 @@ export async function processScreeningCv(job: { id: string; data: ScreeningCvJob
       errorHandler.handleError(error);
     }
     if (job.retryCount >= queuePolicy.retryLimit) {
-      await finishBatchFile(job.data.batchFileId, "failed");
+      await finishBatchFile(batchFileId, "failed");
     } else {
-      await releaseFile(job.data.batchFileId);
+      await releaseFile(batchFileId);
     }
     throw error;
   }
@@ -422,10 +438,52 @@ async function enqueueUnqueuedCandidates(): Promise<void> {
   })) { /* Recover CVs saved before the queue job was recorded. */ }
 }
 
+// Older scored screenings may have completed files or no upload batch at all.
+// Reserve their reason job in the same transaction as enqueueing it, and only
+// reclaim a reservation once pg-boss confirms that its owner is no longer live.
+export async function enqueueMissingScreeningReasons(): Promise<void> {
+  const missing = await pool.query<{ id: string }>(
+    `SELECT s.id FROM screenings s
+     JOIN candidates c ON c.id = s.candidate_id
+     WHERE s.score IS NOT NULL AND s.reason_summary IS NULL
+       AND s.reason_status IN ('pending', 'processing')
+       AND c.parsed_resume IS NOT NULL
+     ORDER BY s.created_at, s.id`,
+  );
+  for (const screening of missing.rows) {
+    await pool.transaction(async (client) => {
+      const selected = await client.query<{ candidate_id: string; reason_token: string | null }>(
+        `SELECT s.candidate_id, s.reason_token FROM screenings s
+         JOIN candidates c ON c.id = s.candidate_id
+         WHERE s.id = $1 AND s.score IS NOT NULL AND s.reason_summary IS NULL
+           AND s.reason_status IN ('pending', 'processing')
+           AND c.parsed_resume IS NOT NULL
+         FOR UPDATE OF s SKIP LOCKED`,
+        [screening.id],
+      );
+      const row = selected.rows[0];
+      if (!row) return;
+      if (row.reason_token) {
+        const state = await screeningQueue.jobState(row.reason_token);
+        if (state === "created" || state === "active" || state === "retry") return;
+      }
+      const jobId = await screeningQueue.enqueue(client, {
+        candidateId: row.candidate_id, screeningId: screening.id, reasonOnly: true,
+      });
+      await client.query(
+        `UPDATE screenings SET reason_status = 'processing', reason_token = $2::uuid
+         WHERE id = $1 AND reason_summary IS NULL`,
+        [screening.id, jobId],
+      );
+    });
+  }
+}
+
 async function start(): Promise<void> {
   const instance = await startQueueBoss();
   await instance.createQueue(QUEUE, queuePolicy);
   await enqueueUnqueuedCandidates();
+  await enqueueMissingScreeningReasons();
   await instance.work<ScreeningCvJob>(QUEUE, async ([job]) => {
     if (job) await processScreeningCv(job);
   });
@@ -435,4 +493,4 @@ async function stop(): Promise<void> {
   await stopQueueBoss();
 }
 
-export const screeningQueue = { enqueue, scheduleScore, start, stop };
+export const screeningQueue = { enqueue, jobState, scheduleScore, start, stop };
