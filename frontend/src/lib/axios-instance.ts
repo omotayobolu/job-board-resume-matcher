@@ -15,8 +15,20 @@ if (apiBaseUrlMissing) {
   );
 }
 
+/** Bound hung requests so a down API cannot leave the auth check spinning. */
+export const API_TIMEOUT_MS = 15_000;
+
 // The httpOnly cookie is the only auth mechanism, so every request sends credentials.
 export const axiosInstance = axios.create({
   baseURL: apiBaseUrl,
   withCredentials: true,
+  timeout: API_TIMEOUT_MS,
+});
+
+// CV and resume uploads can outlast a session check. Leave those unbounded.
+axiosInstance.interceptors.request.use((config) => {
+  if (typeof FormData !== "undefined" && config.data instanceof FormData) {
+    config.timeout = 0;
+  }
+  return config;
 });

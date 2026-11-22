@@ -80,7 +80,15 @@ export interface ScreeningRow {
   reason_strengths: string[] | null;
   reason_gaps: string[] | null;
   reason_status: ProcessingStatus;
+  must_have_checks: MustHaveCheck[];
+  reason_token: string | null;
   created_at: Date;
+}
+
+export interface MustHaveCheck {
+  requirement: string;
+  met: "yes" | "no" | "unclear";
+  evidence: string;
 }
 
 export interface ApplicationRow {

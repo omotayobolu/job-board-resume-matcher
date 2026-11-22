@@ -7,6 +7,7 @@ import jobsRoute from "./jobsRoute";
 import applicationRoute from "./applicationRoute";
 import screeningRoute from "./screeningRoute";
 import jobUploadsRoute from "./jobUploadsRoute";
+import jobScreeningsRoute from "./jobScreeningsRoute";
 import { authenticateToken } from "../middlewares/authMiddleware";
 import { blockHiddenJobRoutes, blockJobSeekerFeatures } from "../middlewares/jobSeekerFeatures";
 import authRoute from "../routes/authRoute";
@@ -18,6 +19,7 @@ router.use("/api/v1/job-seeker", blockJobSeekerFeatures, authenticateToken, jobS
 router.use("/api/v1/recruiter", authenticateToken, recruiterRoute);
 router.use("/api/v1/screenings", authenticateToken, screeningRoute);
 router.use("/api/v1/jobs/:jobId/uploads", authenticateToken, jobUploadsRoute);
+router.use("/api/v1/jobs/:jobId/screenings", authenticateToken, jobScreeningsRoute);
 router.use("/api/v1/jobs", authenticateToken, jobsRoute);
 router.use("/api/v1/applications", authenticateToken, applicationRoute);
 

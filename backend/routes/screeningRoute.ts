@@ -1,7 +1,7 @@
 import express from "express";
 import multer from "multer";
 import { uploadLimits } from "../config/uploadLimits";
-import { createScreening } from "../controllers/screeningController";
+import { createScreening, updateStatus, viewCv } from "../controllers/screeningController";
 import { isRecruiter } from "../middlewares/authMiddleware";
 import { CustomError, HttpStatusCode } from "../utils/error-handler";
 
@@ -39,5 +39,7 @@ function uploadCvs(req: express.Request, res: express.Response, next: express.Ne
 }
 
 router.post("/", isRecruiter, uploadCvs, createScreening);
+router.patch("/:id/status", isRecruiter, updateStatus);
+router.get("/:id/cv", isRecruiter, viewCv);
 
 export default router;
