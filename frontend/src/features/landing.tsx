@@ -30,13 +30,17 @@ const features: Feature[] = [
   },
 ];
 
-const Landing = () => {
+const Landing = ({ homePath = null }: { homePath?: string | null }) => {
   return (
     <div className="min-h-screen bg-light-grey flex flex-col">
       <header className="flex items-center justify-between px-6 sm:px-12 py-5">
         <Logo />
         <Button asChild variant="primary" className="rounded-full px-6">
-          <Link to="/login">Sign in</Link>
+          {homePath ? (
+            <Link to={homePath}>Go to dashboard</Link>
+          ) : (
+            <Link to="/login">Sign in</Link>
+          )}
         </Button>
       </header>
 

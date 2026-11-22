@@ -3,7 +3,7 @@ import { Navigate, Route, Routes } from "react-router";
 import SignIn from "./features/sign-in";
 import SignUp from "./features/sign-up";
 import Dashboard from "./features/dashboard";
-import Redirect from "./features/redirect";
+import Home from "./features/home";
 import ProtectedRoute from "./features/protected-route";
 import RecruiterProfile from "./features/create-recruiters-profile";
 import JobseekerProfile from "./features/create-jobseeker-profile";
@@ -19,7 +19,7 @@ function App() {
     <>
       <ApiConfigBanner />
       <Routes>
-        <Route path="/" element={<Redirect />} />
+        <Route path="/" element={<Home />} />
         <Route path="login" element={<SignIn />} />
         <Route path="signup" element={<SignUp />} />
         <Route element={<ProtectedRoute />}>
