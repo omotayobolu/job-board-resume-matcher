@@ -277,6 +277,7 @@ const JobApplicants = () => {
                     type="button"
                     size="sm"
                     variant={item.status === status ? "primary" : "outline"}
+                    className={item.status === status ? "disabled:opacity-100" : undefined}
                     disabled={updatingId === item.id || item.status === status}
                     onClick={() => setStatus(item.id, status)}
                   >
