@@ -6,6 +6,7 @@ import { selectUser } from "@/store/userSlice";
 import { useQuery } from "@tanstack/react-query";
 import { fetchRecruiterJobs } from "@/lib/jobs-api";
 import { useLogout } from "@/hooks/use-logout";
+import { Logo } from "@/components/logo";
 
 const RecruiterSidebar = () => {
   const user = useSelector(selectUser);
@@ -20,7 +21,10 @@ const RecruiterSidebar = () => {
 
   return (
     <div className="w-[15%] h-screen overflow-hidden fixed top-0 left-0 border-r-2 border-[#E5E5E5] bg-white pl-6 flex flex-col justify-between z-50">
-      <nav className="mt-18">
+      <div className="pt-6 pr-3">
+        <Logo className="gap-2 [&_img]:size-7 [&_span]:text-base" />
+      </div>
+      <nav className="mt-8">
         <NavLink to="/dashboard" end>
           {({ isActive }) => (
             <div

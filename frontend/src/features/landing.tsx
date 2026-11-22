@@ -1,4 +1,4 @@
-import BrandLogo from "@/components/brand-logo";
+import { Logo } from "@/components/logo";
 import { Button } from "@/components/ui/button";
 import { BriefcaseBusiness, ListOrdered, Sparkles, Upload } from "lucide-react";
 import type { ReactNode } from "react";
@@ -35,7 +35,7 @@ const Landing = () => {
   return (
     <div className="min-h-screen bg-light-grey flex flex-col">
       <header className="flex items-center justify-between px-6 sm:px-12 py-5">
-        <BrandLogo />
+        <Logo />
         <Button asChild variant="primary" className="rounded-full px-6">
           <Link to="/login">Sign in</Link>
         </Button>
@@ -91,8 +91,8 @@ const Landing = () => {
         </section>
       </main>
 
-      <footer className="px-6 sm:px-12 py-6 text-center text-sm text-dark-grey/70">
-        Shortlistly
+      <footer className="px-6 sm:px-12 py-6 flex justify-center">
+        <Logo className="[&_img]:size-6 [&_span]:text-lg" />
       </footer>
     </div>
   );

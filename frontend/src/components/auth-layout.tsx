@@ -1,4 +1,4 @@
-import BrandLogo from "@/components/brand-logo";
+import { Logo } from "@/components/logo";
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 
@@ -22,7 +22,7 @@ const AuthLayout = ({
   return (
     <div className="w-full min-h-screen flex flex-col bg-light-grey">
       <header className="px-6 sm:px-12 py-5">
-        <BrandLogo />
+        <Logo />
       </header>
       <div className="flex-1 flex justify-center items-center w-full px-4 py-10">
         <div className="bg-white w-full max-w-lg rounded-3xl p-8 sm:p-12 shadow-sm">

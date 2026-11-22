@@ -1,4 +1,4 @@
-import BrandLogo from "@/components/brand-logo";
+import { Logo } from "@/components/logo";
 import CountrySelect from "@/components/country-select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -63,7 +63,7 @@ const RecruiterProfile = () => {
   return (
     <div className="w-full min-h-screen flex flex-col bg-light-grey">
       <header className="px-6 sm:px-12 py-5">
-        <BrandLogo />
+        <Logo />
       </header>
       <div className="flex-1 flex justify-center items-center w-full px-4 py-10">
         <div className="bg-white min-h-[485px] w-full sm:w-[600px] md:w-[700px] lg:w-[800px] max-w-full pt-12 rounded-3xl drop-shadow-[0px_6px_40px_rgba(245,245,245,1)] flex justify-center">

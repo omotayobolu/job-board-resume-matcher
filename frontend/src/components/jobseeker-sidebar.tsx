@@ -1,12 +1,16 @@
 import { NavLink } from "react-router";
 import { Element4, LogoutCurve, Profile, Sms } from "iconsax-reactjs";
 import { useLogout } from "@/hooks/use-logout";
+import { Logo } from "@/components/logo";
 
 const JobseekerSidebar = () => {
   const { logout, isLoggingOut } = useLogout();
   return (
     <div className="w-[15%] fixed top-0 left-0 h-screen overflow-hidden border-r-2 border-[#E5E5E5] bg-white pl-6 flex flex-col justify-between z-50">
-      <nav className="mt-18">
+      <div className="pt-6 pr-3">
+        <Logo className="gap-2 [&_img]:size-7 [&_span]:text-base" />
+      </div>
+      <nav className="mt-8">
         <NavLink to="/dashboard" end>
           {({ isActive }) => (
             <div
