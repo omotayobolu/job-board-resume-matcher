@@ -104,7 +104,7 @@ const JobseekerDashboard = () => {
       <>
       <div className="flex flex-row gap-6 items-stretch w-full">
         <div className="w-[65%]">
-          <div className="border border-black rounded-4xl bg-[#6E62E5] p-8">
+          <div className="border border-black rounded-4xl bg-purple p-8">
             <h2 className="text-2xl font-bold text-white font-sf-pro">
               Elevate Your Application!
             </h2>

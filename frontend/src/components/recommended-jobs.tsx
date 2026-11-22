@@ -8,7 +8,7 @@ function JobCard({ job }: { job: RecommendedJob }) {
     <article className="rounded-3xl border border-[#E5E5E5] bg-[#FAFAFA] p-5">
       <div className="flex items-start justify-between gap-3">
         <h3 className="text-lg font-medium text-black">{job.job_title}</h3>
-        <span className="shrink-0 rounded-full bg-[#6E62E5] px-3 py-1 text-sm font-medium text-white">
+        <span className="shrink-0 rounded-full bg-purple px-3 py-1 text-sm font-medium text-white">
           {job.matchPercent}% match
         </span>
       </div>

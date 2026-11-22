@@ -61,9 +61,9 @@ function matches(item: RoleScreening, filter: Filter): boolean {
 }
 
 function statusBadge(status: RoleScreening["status"]) {
-  if (status === "shortlisted" || status === "hired") return <Badge variant="success">{status}</Badge>;
+  if (status === "shortlisted" || status === "hired") return <Badge className="border-transparent bg-purple text-white">{status}</Badge>;
   if (status === "rejected") return <Badge variant="destructive">rejected</Badge>;
-  return <Badge variant="default">new</Badge>;
+  return <Badge className="border-transparent bg-purple/15 text-purple">new</Badge>;
 }
 
 const JobApplicants = () => {

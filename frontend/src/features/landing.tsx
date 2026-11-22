@@ -1,4 +1,4 @@
-import BrandLogo from "@/components/brand-logo";
+import { Logo } from "@/components/logo";
 import { Button } from "@/components/ui/button";
 import { BriefcaseBusiness, ListOrdered, Sparkles, Upload } from "lucide-react";
 import type { ReactNode } from "react";
@@ -13,21 +13,20 @@ interface Feature {
 const features: Feature[] = [
   {
     icon: <BriefcaseBusiness size={22} />,
-    title: "Create the role",
+    title: "Describe the role",
     description:
-      "Write the job once. Every CV is screened against that description, the skills, and the location.",
+      "Paste a job description, or one line such as “Senior Node developer, 5+ years”, on the same screen as the CVs.",
   },
   {
     icon: <Upload size={22} />,
-    title: "Drop in the applicants",
-    description:
-      "Add the CVs for a role in one go. Shortlistly reads them so your team does not have to open every file.",
+    title: "Drop in the CVs",
+    description: "Add PDFs, DOCX files, or a zip. There is no separate step to create the role.",
   },
   {
     icon: <ListOrdered size={22} />,
     title: "Get a ranked shortlist",
     description:
-      "Applicants come back in order, with a score and a short explanation of why they are high or low.",
+      "Each person gets a score, plus strengths and gaps. You make the final call.",
   },
 ];
 
@@ -35,7 +34,7 @@ const Landing = () => {
   return (
     <div className="min-h-screen bg-light-grey flex flex-col">
       <header className="flex items-center justify-between px-6 sm:px-12 py-5">
-        <BrandLogo />
+        <Logo />
         <Button asChild variant="primary" className="rounded-full px-6">
           <Link to="/login">Sign in</Link>
         </Button>
@@ -84,15 +83,15 @@ const Landing = () => {
             <Sparkles className="mx-auto" size={28} />
             <h2 className="text-2xl sm:text-3xl font-semibold mt-4">Reasons, not just a score</h2>
             <p className="mt-4 text-light-grey leading-7">
-              Each person on the shortlist includes what matches the role and what is missing,
+              Each person on the shortlist includes strengths and gaps,
               so a recruiter can defend the ranking to a client or a hiring manager.
             </p>
           </div>
         </section>
       </main>
 
-      <footer className="px-6 sm:px-12 py-6 text-center text-sm text-dark-grey/70">
-        Shortlistly
+      <footer className="px-6 sm:px-12 py-6 flex justify-center">
+        <Logo className="[&_img]:size-6 [&_span]:text-lg" />
       </footer>
     </div>
   );

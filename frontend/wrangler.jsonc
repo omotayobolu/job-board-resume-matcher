@@ -1,0 +1,10 @@
+{
+  "name": "shortlistly",
+  "compatibility_date": "2026-11-01",
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "single-page-application",
+  },
+  // Required by `wrangler preview`. Assets and compatibility stay at the top level.
+  "previews": {},
+}
