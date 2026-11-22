@@ -228,6 +228,7 @@ describe("screening uploads", { concurrency: 1 }, () => {
       await client.query(sqlFile("setup.sql"));
       await client.query(sqlFile("20261123_upload_batch_files.sql"));
       await client.query(sqlFile("20261124_upload_batch_file_reason.sql"));
+      await client.query(sqlFile("20261125_screening_fit.sql"));
       await client.query(
         `INSERT INTO users (id, email, full_name, role, password_hash, hasprofile, created_at)
          VALUES ($1, 'ada@example.com', 'Ada Lovelace', 'recruiter', 'x', true, NOW()),
@@ -294,9 +295,27 @@ describe("screening uploads", { concurrency: 1 }, () => {
     };
     jobQueueModule.jobEmbeddingQueue.enqueue = async () => randomUUID();
 
-    global.fetch = async (url) => {
+    global.fetch = async (url, init) => {
       const target = String(url);
       if (target.includes("/v1/responses")) {
+        const body = JSON.parse(String(init?.body ?? "{}")) as { text?: { format?: { name?: string } } };
+        if (body.text?.format?.name === "screening_fit") {
+          return new Response(JSON.stringify({
+            status: "completed",
+            output: [{
+              type: "message",
+              content: [{
+                type: "output_text",
+                text: JSON.stringify({
+                  summary: "The CV shows backend work that lines up with this role.",
+                  strengths: ["Lists Node.js in skills."],
+                  gaps: [],
+                  must_haves: [],
+                }),
+              }],
+            }],
+          }), { status: 200 });
+        }
         parseCalls += 1;
         if (failParse) return new Response("no", { status: 500 });
         return new Response(JSON.stringify({
@@ -582,12 +601,15 @@ describe("screening uploads", { concurrency: 1 }, () => {
     await setJobEmbedding(body.job_id);
     await processScreeningCv({ id: followUp.id, data: followUp.payload, retryCount: 0 });
     assert.equal(parseCalls, parsesBefore + 1);
-    const done = await query<{ score: number; status: string }>(
-      `SELECT s.score, f.status FROM upload_batch_files f JOIN screenings s ON s.id = f.screening_id WHERE f.id = $1`,
+    const done = await query<{ score: number; status: string; reason_status: string; reason_summary: string }>(
+      `SELECT s.score, f.status, s.reason_status, s.reason_summary
+       FROM upload_batch_files f JOIN screenings s ON s.id = f.screening_id WHERE f.id = $1`,
       [job.payload.batchFileId],
     );
     assert.equal(Number(done[0]?.score), 1);
     assert.equal(done[0]?.status, "completed");
+    assert.equal(done[0]?.reason_status, "completed");
+    assert.match(done[0]?.reason_summary ?? "", /backend work/);
   });
 
   test("scoring gives up after the wait window without parsing again", async () => {

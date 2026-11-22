@@ -49,6 +49,62 @@ export async function fetchUploadBatch(jobId: string, batchId: string): Promise<
   return response.data;
 }
 
+export type ScreeningDecision = "new" | "shortlisted" | "rejected";
+
+export type MustHave = {
+  requirement: string;
+  met: "yes" | "no" | "unclear";
+  evidence: string;
+};
+
+export type RoleScreening = {
+  id: string;
+  candidate_id: string;
+  name: string;
+  email: string | null;
+  filename: string | null;
+  match_percent: number | null;
+  status: ScreeningDecision | "hired";
+  summary: string | null;
+  strengths: string[];
+  gaps: string[];
+  must_haves: MustHave[];
+  pipeline: "processing" | "failed" | "ready";
+  file_reason: string | null;
+};
+
+export type RoleShortlist = {
+  role: { id: string; title: string; description: string };
+  screenings: RoleScreening[];
+};
+
+export async function fetchRoleScreenings(jobId: string): Promise<RoleShortlist> {
+  const response = await axiosInstance.get<RoleShortlist>(`/jobs/${jobId}/screenings`);
+  return response.data;
+}
+
+export async function updateScreeningStatus(screeningId: string, status: ScreeningDecision): Promise<void> {
+  await axiosInstance.patch(`/screenings/${screeningId}/status`, { status });
+}
+
+export async function fetchScreeningCv(screeningId: string): Promise<{ url: string; filename: string }> {
+  const response = await axiosInstance.get<{ url: string; filename: string }>(`/screenings/${screeningId}/cv`);
+  return response.data;
+}
+
+export async function downloadShortlistCsv(jobId: string): Promise<void> {
+  const response = await axiosInstance.get<Blob>(`/jobs/${jobId}/screenings/export`, { responseType: "blob" });
+  const header = String(response.headers["content-disposition"] ?? "");
+  const matched = /filename="([^"]+)"/.exec(header);
+  const filename = matched?.[1] || "shortlist.csv";
+  const url = URL.createObjectURL(response.data);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
 export async function retryUploadBatch(jobId: string, batchId: string): Promise<UploadBatch> {
   const response = await axiosInstance.post<UploadBatch>(`/jobs/${jobId}/uploads/${batchId}/retry`);
   return response.data;

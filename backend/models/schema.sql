@@ -322,11 +322,14 @@ CREATE TABLE IF NOT EXISTS public.screenings
     reason_strengths text[] COLLATE pg_catalog."default",
     reason_gaps text[] COLLATE pg_catalog."default",
     reason_status text COLLATE pg_catalog."default" NOT NULL DEFAULT 'pending'::text,
+    must_have_checks jsonb NOT NULL DEFAULT '[]'::jsonb,
+    reason_token uuid,
     created_at timestamp without time zone DEFAULT now(),
     CONSTRAINT screenings_pkey PRIMARY KEY (id),
     CONSTRAINT screenings_job_id_candidate_id_key UNIQUE (job_id, candidate_id),
     CONSTRAINT screenings_status_check CHECK (status = ANY (ARRAY['new'::text, 'shortlisted'::text, 'rejected'::text, 'hired'::text])),
     CONSTRAINT screenings_reason_status_check CHECK (reason_status = ANY (ARRAY['pending'::text, 'processing'::text, 'completed'::text, 'failed'::text])),
+    CONSTRAINT screenings_must_have_checks_array CHECK (jsonb_typeof(must_have_checks) = 'array'),
     CONSTRAINT screenings_job_id_fkey FOREIGN KEY (job_id)
         REFERENCES public.jobs (id) MATCH SIMPLE
         ON UPDATE NO ACTION

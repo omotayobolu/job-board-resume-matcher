@@ -86,9 +86,8 @@ export default function ScreeningProgress({ jobId, batchId, showRoleLink }: Scre
       {showRoleLink && !running && (
         <p className="mt-4 text-sm">
           <Link to={`/dashboard/applicants/${jobId}`} className="font-semibold text-purple">
-            View this role
+            View the ranked shortlist
           </Link>
-          <span className="text-[#4A4A4A]">. Scores are saved. The ranked shortlist comes in the next update.</span>
         </p>
       )}
     </div>

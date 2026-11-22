@@ -10,6 +10,7 @@ import { embedResume } from "./embed";
 import { errorHandler } from "./error-handler";
 import { parseResumeFile } from "./parseResume";
 import { getQueueBoss, queuePolicy, startQueueBoss, stopQueueBoss } from "./queueBoss";
+import { assessScreenFit } from "./screenFit";
 import { vectorLiteral } from "./vector";
 
 const QUEUE = "screening-cv";
@@ -48,6 +49,13 @@ class CandidateStillProcessing extends Error {
   constructor() {
     super("Candidate resume is still processing");
     this.name = "CandidateStillProcessing";
+  }
+}
+
+class ReasonsStillProcessing extends Error {
+  constructor() {
+    super("Screening reasons are still processing");
+    this.name = "ReasonsStillProcessing";
   }
 }
 
@@ -232,11 +240,75 @@ async function finishScoredFiles(candidateId: string): Promise<void> {
      JOIN screenings s ON s.id = f.screening_id
      WHERE s.candidate_id = $1
        AND s.score IS NOT NULL
+       AND s.reason_status = 'completed'
+       AND s.reason_summary IS NOT NULL
        AND f.status IN ('pending', 'processing')`,
     [candidateId],
   );
   for (const file of files.rows) {
     await finishBatchFile(file.id, "completed");
+  }
+}
+
+// One OpenAI fit call per screening. A stored summary is not requested again.
+export async function ensureScreeningReasons(job: { id: string; data: ScreeningCvJob; retryCount: number }): Promise<void> {
+  const screeningId = job.data.screeningId;
+  const claimed = await pool.query<{ id: string }>(
+    `UPDATE screenings
+     SET reason_status = 'processing', reason_token = $2::uuid
+     WHERE id = $1
+       AND score IS NOT NULL
+       AND reason_summary IS NULL
+       AND (
+         reason_status IN ('pending', 'failed')
+         OR (reason_status = 'processing' AND reason_token = $2::uuid)
+       )
+     RETURNING id`,
+    [screeningId, job.id],
+  );
+  if (!claimed.rows[0]) {
+    const current = await pool.query<{ reason_summary: string | null; score: number | null }>(
+      `SELECT reason_summary, score FROM screenings WHERE id = $1`,
+      [screeningId],
+    );
+    const row = current.rows[0];
+    if (!row || row.score === null || row.reason_summary?.trim()) return;
+    throw new ReasonsStillProcessing();
+  }
+
+  try {
+    const context = await pool.query<{ job_title: string | null; job_description: string | null; parsed_resume: unknown }>(
+      `SELECT j.job_title, j.job_description, c.parsed_resume
+       FROM screenings s
+       JOIN jobs j ON j.id = s.job_id
+       JOIN candidates c ON c.id = s.candidate_id
+       WHERE s.id = $1 AND s.reason_token = $2::uuid`,
+      [screeningId, job.id],
+    );
+    const row = context.rows[0];
+    if (!row?.parsed_resume) throw new Error("Screening has no parsed CV");
+    const role = [row.job_title, row.job_description].filter((part) => part && part.trim()).join("\n");
+    const fit = await assessScreenFit(role, row.parsed_resume);
+    const saved = await pool.query(
+      `UPDATE screenings
+       SET reason_summary = $3,
+           reason_strengths = $4,
+           reason_gaps = $5,
+           must_have_checks = $6::jsonb,
+           reason_status = 'completed',
+           reason_token = NULL
+       WHERE id = $1 AND reason_token = $2::uuid AND reason_summary IS NULL`,
+      [screeningId, job.id, fit.summary, fit.strengths, fit.gaps, JSON.stringify(fit.must_haves)],
+    );
+    if (saved.rowCount === 0) return;
+  } catch (error) {
+    await pool.query(
+      `UPDATE screenings
+       SET reason_status = $3, reason_token = NULL
+       WHERE id = $1 AND reason_token = $2::uuid AND reason_summary IS NULL`,
+      [screeningId, job.id, job.retryCount >= queuePolicy.retryLimit ? "failed" : "pending"],
+    );
+    throw error;
   }
 }
 
@@ -289,7 +361,7 @@ export async function processScreeningCv(job: { id: string; data: ScreeningCvJob
   try {
     if (job.data.scoreOnly) {
       const existing = await loadCandidate(job.data.candidateId);
-      // The parse job already called OpenAI. This job only waits for the role embedding.
+      // Parsing already called OpenAI. This job waits for the role embedding, then writes fit notes once.
       if (!existing?.parsed_resume || !existing.has_embedding) {
         await deferScore(job.data);
         return;
@@ -304,9 +376,10 @@ export async function processScreeningCv(job: { id: string; data: ScreeningCvJob
       await deferScore(job.data);
       return;
     }
+    await ensureScreeningReasons(job);
     await finishScoredFiles(job.data.candidateId);
   } catch (error) {
-    if (!(error instanceof CandidateStillProcessing)) {
+    if (!(error instanceof CandidateStillProcessing) && !(error instanceof ReasonsStillProcessing)) {
       errorHandler.handleError(error);
     }
     if (job.retryCount >= queuePolicy.retryLimit) {

@@ -164,8 +164,11 @@ CREATE TABLE IF NOT EXISTS public.screenings (
   reason_gaps text[],
   reason_status text NOT NULL DEFAULT 'pending'
     CHECK (reason_status IN ('pending', 'processing', 'completed', 'failed')),
+  must_have_checks jsonb NOT NULL DEFAULT '[]'::jsonb,
+  reason_token uuid,
   created_at timestamp without time zone DEFAULT now(),
-  UNIQUE (job_id, candidate_id)
+  UNIQUE (job_id, candidate_id),
+  CONSTRAINT screenings_must_have_checks_array CHECK (jsonb_typeof(must_have_checks) = 'array')
 );
 
 CREATE TABLE IF NOT EXISTS public.upload_batch_files (
