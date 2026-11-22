@@ -183,11 +183,14 @@ const getJobsByRecruiter = async (req: Request, res: Response, next: NextFunctio
       jobs.created_at,
       jobs.work_type,
       jobs.job_status,
-      COUNT(applications.id) AS applicants_count,
-      MAX(applications.score) AS top_match
+      COUNT(candidates.id) AS applicants_count,
+      MAX(screenings.score) FILTER (WHERE candidates.id IS NOT NULL) AS top_match
       FROM jobs
-      LEFT JOIN applications
-        ON jobs.id = applications.job_id
+      LEFT JOIN screenings
+        ON jobs.id = screenings.job_id
+      LEFT JOIN candidates
+        ON candidates.id = screenings.candidate_id
+        AND candidates.workspace_id IS NOT DISTINCT FROM jobs.workspace_id
       WHERE recruiter_id = $1
         AND (
           jobs.workspace_id IS NULL

@@ -6,7 +6,7 @@ import CvDropzone from "./cv-dropzone";
 import ScreeningProgress from "./screening-progress";
 import { Button } from "./ui/button";
 
-export default function AddRoleCvs({ jobId }: { jobId: string }) {
+export default function AddRoleCvs({ jobId, onUploaded }: { jobId: string; onUploaded?: () => void }) {
   const [files, setFiles] = useState<File[]>([]);
   const [batchId, setBatchId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -23,6 +23,7 @@ export default function AddRoleCvs({ jobId }: { jobId: string }) {
       const created = await addCvs(jobId, files);
       setBatchId(created.batch_id);
       setFiles([]);
+      onUploaded?.();
       toast.success("CVs added to this role.");
     } catch (submitError) {
       setError(getApiErrorMessage(submitError, "Could not upload those CVs."));
