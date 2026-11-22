@@ -494,7 +494,7 @@ const JobApplicants = () => {
                 <div
                   className={`max-w-[250px] p-3 rounded-lg text-sm ${
                     message.type === "user"
-                      ? "bg-[#6E62E5] text-white rounded-br-md"
+                      ? "bg-purple text-white rounded-br-md"
                       : "bg-[#F5F7FB] text-black rounded-bl-md"
                   }`}
                 >

@@ -75,6 +75,7 @@
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-purple: var(--purple);
+  --color-purple-hover: var(--purple-hover);
   --color-black: var(--black);
   --color-light-grey: var(--light-grey);
   --color-dark-grey: var(--dark-grey);
@@ -117,7 +118,9 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
-  --purple: rgba(113, 102, 229, 1);
+  /* UI teal. #0D9488 is the logo; this darker step keeps white text above 4.5:1. */
+  --purple: #0f766e;
+  --purple-hover: #115e59;
   --black: rgba(0, 0, 0, 1);
   --light-grey: rgba(245, 246, 248, 1);
   --dark-grey: rgba(33, 42, 55, 1);

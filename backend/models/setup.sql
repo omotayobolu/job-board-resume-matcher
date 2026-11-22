@@ -1,4 +1,4 @@
--- Initialize an empty PostgreSQL database for the job board.
+-- Initialize an empty PostgreSQL database for Shortlistly.
 -- Run with psql -v ON_ERROR_STOP=1 -f backend/models/setup.sql
 
 BEGIN;
