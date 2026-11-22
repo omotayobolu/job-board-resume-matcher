@@ -11,7 +11,7 @@ import {
   MIN_PASSWORD_LENGTH,
   validateEmail,
 } from "@/lib/validation";
-import { setUser, type Role, type UserType } from "@/store/userSlice";
+import { setUser, type UserType } from "@/store/userSlice";
 import { useForm } from "react-hook-form";
 import { useDispatch } from "react-redux";
 import { useNavigate } from "react-router";
@@ -19,19 +19,14 @@ import { useNavigate } from "react-router";
 interface SignUpFields {
   fullName: string;
   email: string;
-  role: Role | null;
+  companyName: string;
   password: string;
   confirmPassword: string;
 }
 
 const MIN_NAME_LENGTH = 2;
 const MAX_NAME_LENGTH = 120;
-const ROLE_ERROR = "Choose Job Seeker or Recruiter.";
-
-const ROLE_OPTIONS: ReadonlyArray<{ value: Role; label: string }> = [
-  { value: "job_seeker", label: "Job Seeker" },
-  { value: "recruiter", label: "Recruiter" },
-];
+const MAX_COMPANY_LENGTH = 200;
 
 function validateFullName(value: string): true | string {
   const length = value.trim().length;
@@ -58,17 +53,23 @@ const SignUp = () => {
     defaultValues: {
       fullName: "",
       email: "",
-      role: null,
+      companyName: "",
       password: "",
       confirmPassword: "",
     },
   });
 
-  const onSubmit = async ({ fullName, email, role, password }: SignUpFields) => {
+  const onSubmit = async ({ fullName, email, companyName, password }: SignUpFields) => {
+    const company = companyName.trim();
     try {
       const { data } = await axiosInstance.post<{ user: UserType }>(
         "/auth/register",
-        { full_name: fullName.trim(), email: email.trim(), password, role }
+        {
+          full_name: fullName.trim(),
+          email: email.trim(),
+          password,
+          ...(company ? { company_name: company } : {}),
+        }
       );
       dispatch(setUser(data.user));
       navigate(getHomePath(data.user), { replace: true });
@@ -85,7 +86,7 @@ const SignUp = () => {
   return (
     <AuthLayout
       title="Create your account"
-      subtitle="Sign up to find jobs or hire talent."
+      subtitle="Create a recruiter account. You get a workspace for your team."
       switchPrompt="Already have an account?"
       switchLabel="Sign in"
       switchTo="/login"
@@ -125,25 +126,25 @@ const SignUp = () => {
           />
           <FieldError id="email-error" message={errors.email?.message} />
         </div>
-        <fieldset aria-describedby="role-error">
-          <legend className="block mb-2 font-medium">I am a</legend>
-          <div className="flex gap-6">
-            {ROLE_OPTIONS.map(({ value, label }) => (
-              <label
-                key={value}
-                className="flex items-center gap-2 cursor-pointer"
-              >
-                <input
-                  type="radio"
-                  value={value}
-                  {...register("role", { required: ROLE_ERROR })}
-                />
-                {label}
-              </label>
-            ))}
-          </div>
-          <FieldError id="role-error" message={errors.role?.message} />
-        </fieldset>
+        <div>
+          <label htmlFor="company-name" className="block mb-2 font-medium">
+            Company or team name
+          </label>
+          <Input
+            id="company-name"
+            type="text"
+            autoComplete="organization"
+            placeholder="Optional — used as your workspace name"
+            aria-invalid={!!errors.companyName}
+            aria-describedby="company-name-error"
+            {...register("companyName", {
+              validate: (value) =>
+                value.trim().length <= MAX_COMPANY_LENGTH ||
+                `Company name must be ${MAX_COMPANY_LENGTH} characters or fewer.`,
+            })}
+          />
+          <FieldError id="company-name-error" message={errors.companyName?.message} />
+        </div>
         <div>
           <label htmlFor="password" className="block mb-2 font-medium">
             Password

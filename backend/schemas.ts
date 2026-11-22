@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { jobSeekerFeaturesEnabled } from "./features";
 
 const email = z.string().trim().toLowerCase().email().max(254);
 const password = z.string().min(6).max(128);
@@ -9,8 +10,16 @@ export const registerSchema = z.object({
   password,
   role: z.enum(["job_seeker", "recruiter"], {
     error: "Choose Job Seeker or Recruiter.",
-  }),
-});
+  }).optional(),
+  company_name: z.string().trim().max(200).optional(),
+}).transform((data) => ({
+  email: data.email,
+  full_name: data.full_name,
+  password: data.password,
+  company_name: data.company_name ? data.company_name : undefined,
+  // Recruiter-only while job seeker features are off, even if the client sends job_seeker.
+  role: jobSeekerFeaturesEnabled() && data.role ? data.role : "recruiter" as const,
+}));
 
 export const loginSchema = z.object({
   email,

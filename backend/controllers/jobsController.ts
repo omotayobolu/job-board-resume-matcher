@@ -21,9 +21,16 @@ const createJob = async (req: Request, res: Response, next: NextFunction) => {
     await pool.transaction(async (client) => {
       const result = await client.query<{ id: string }>(
         `INSERT INTO jobs
-         (recruiter_id, job_title, job_description, location, required_skills,
+         (recruiter_id, workspace_id, job_title, job_description, location, required_skills,
           job_status, work_type, embedding_status, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', NOW()) RETURNING id`,
+         VALUES (
+           $1,
+           (SELECT workspace_id FROM workspace_members
+             WHERE user_id = $1
+             ORDER BY CASE member_role WHEN 'owner' THEN 0 WHEN 'admin' THEN 1 ELSE 2 END,
+                      created_at
+             LIMIT 1),
+           $2, $3, $4, $5, $6, $7, 'pending', NOW()) RETURNING id`,
         [recruiter_id, job_details.job_title, job_details.job_description,
           job_details.location, job_details.required_skills, "active", job_details.work_type],
       );
@@ -181,7 +188,15 @@ const getJobsByRecruiter = async (req: Request, res: Response, next: NextFunctio
       FROM jobs
       LEFT JOIN applications
         ON jobs.id = applications.job_id
-      WHERE recruiter_id = $1 
+      WHERE recruiter_id = $1
+        AND (
+          jobs.workspace_id IS NULL
+          OR EXISTS (
+            SELECT 1 FROM workspace_members
+            WHERE workspace_members.workspace_id = jobs.workspace_id
+              AND workspace_members.user_id = $1
+          )
+        )
       GROUP BY jobs.id, jobs.job_title, jobs.job_description, jobs.location, jobs.required_skills, jobs.created_at
       ORDER BY created_at DESC`,
       [recruiterId]
@@ -237,7 +252,15 @@ const updateJobStatus = async (req: Request, res: Response, next: NextFunction) 
 
     const recruiter_id = req.user.id;
     const existingJob = await pool.query<{ id: string }>(
-      "SELECT id FROM jobs WHERE id = $1 AND recruiter_id = $2",
+      `SELECT id FROM jobs WHERE id = $1 AND recruiter_id = $2
+       AND (
+         workspace_id IS NULL
+         OR EXISTS (
+           SELECT 1 FROM workspace_members
+           WHERE workspace_members.workspace_id = jobs.workspace_id
+             AND workspace_members.user_id = $2
+         )
+       )`,
       [id, recruiter_id]
     );
 
@@ -275,7 +298,16 @@ const deleteJob = async (req: Request, res: Response, next: NextFunction) => {
     }
 
     const result = await pool.query<{ id: string }>(
-      "DELETE FROM jobs WHERE id = $1 AND recruiter_id = $2 RETURNING id",
+      `DELETE FROM jobs WHERE id = $1 AND recruiter_id = $2
+       AND (
+         workspace_id IS NULL
+         OR EXISTS (
+           SELECT 1 FROM workspace_members
+           WHERE workspace_members.workspace_id = jobs.workspace_id
+             AND workspace_members.user_id = $2
+         )
+       )
+       RETURNING id`,
       [id, recruiter_id]
     );
 

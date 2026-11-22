@@ -4,7 +4,8 @@ import {
   applyToJob,
   getAllApplications,
 } from "../controllers/applicationController";
+import { blockJobSeekerFeatures } from "../middlewares/jobSeekerFeatures";
 
-router.post("/apply", applyToJob).get("/:jobId", getAllApplications);
+router.post("/apply", blockJobSeekerFeatures, applyToJob).get("/:jobId", getAllApplications);
 
 export default router;

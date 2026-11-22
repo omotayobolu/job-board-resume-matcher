@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import pool from "../db";
 import { requiredEnv } from "../env";
+import { jobSeekerFeaturesEnabled } from "../features";
 import { loginSchema, registerSchema } from "../schemas";
 import type { User } from "../types/domain";
 import { hashPassword, verifyPassword } from "../utils/password";
@@ -37,9 +38,18 @@ function setAuthCookie(res: Response, user: User): void {
   });
 }
 
+function workspaceName(fullName: string, companyName: string | undefined): string {
+  if (companyName && companyName.trim()) return companyName.trim();
+  return `${fullName}'s workspace`;
+}
+
 async function register(req: Request, res: Response, next: NextFunction) {
   try {
-    const { email, full_name, password, role } = registerSchema.parse(req.body as unknown);
+    const parsed = registerSchema.parse(req.body as unknown);
+    const email = parsed.email;
+    const full_name = parsed.full_name;
+    const password = parsed.password;
+    const role = jobSeekerFeaturesEnabled() ? parsed.role : "recruiter";
     const existing = await pool.query<{ id: string }>(
       "SELECT id FROM users WHERE lower(email) = $1 LIMIT 1",
       [email]
@@ -49,14 +59,30 @@ async function register(req: Request, res: Response, next: NextFunction) {
     }
 
     const passwordHash = await hashPassword(password);
-    const result = await pool.query<User>(
-      `INSERT INTO users (email, full_name, password_hash, role, created_at)
-       VALUES ($1, $2, $3, $4, NOW())
-       ON CONFLICT (email) DO NOTHING
-       RETURNING id, email, full_name, role, hasprofile`,
-      [email, full_name, passwordHash, role]
-    );
-    const saved = result.rows[0];
+    const saved = await pool.transaction(async (client) => {
+      const result = await client.query<User>(
+        `INSERT INTO users (email, full_name, password_hash, role, created_at)
+         VALUES ($1, $2, $3, $4, NOW())
+         ON CONFLICT (email) DO NOTHING
+         RETURNING id, email, full_name, role, hasprofile`,
+        [email, full_name, passwordHash, role]
+      );
+      const created = result.rows[0];
+      if (!created || created.role !== "recruiter") return created ?? null;
+
+      const workspace = await client.query<{ id: string }>(
+        "INSERT INTO workspaces (name) VALUES ($1) RETURNING id",
+        [workspaceName(full_name, parsed.company_name)]
+      );
+      const workspaceId = workspace.rows[0]?.id;
+      if (!workspaceId) throw new Error("Workspace insert returned no row");
+      await client.query(
+        `INSERT INTO workspace_members (workspace_id, user_id, member_role)
+         VALUES ($1, $2, 'owner')`,
+        [workspaceId, created.id]
+      );
+      return created;
+    });
     if (!saved) {
       return res.status(409).json({ error: "An account with this email already exists." });
     }

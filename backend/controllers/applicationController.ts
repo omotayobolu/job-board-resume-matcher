@@ -134,7 +134,15 @@ const getAllApplications = async (req: Request, res: Response, next: NextFunctio
       });
     }
     const job = await pool.query<{ id: string }>(
-      "SELECT id FROM jobs WHERE id = $1 AND recruiter_id = $2",
+      `SELECT id FROM jobs WHERE id = $1 AND recruiter_id = $2
+       AND (
+         workspace_id IS NULL
+         OR EXISTS (
+           SELECT 1 FROM workspace_members
+           WHERE workspace_members.workspace_id = jobs.workspace_id
+             AND workspace_members.user_id = $2
+         )
+       )`,
       [jobId, req.user.id]
     );
     if (job.rowCount === 0) {

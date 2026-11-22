@@ -1,5 +1,5 @@
 import { NavLink } from "react-router";
-import { Element4, LogoutCurve, Profile2User, Sms } from "iconsax-reactjs";
+import { Element4, LogoutCurve, Profile2User } from "iconsax-reactjs";
 import { Button } from "./ui/button";
 import { useSelector } from "react-redux";
 import { selectUser } from "@/store/userSlice";
@@ -64,28 +64,6 @@ const RecruiterSidebar = ({ dialogOpen }: DialogProps) => {
                 } text-lg`}
               >
                 Applicants
-              </p>
-            </div>
-          )}
-        </NavLink>
-        <NavLink to="/dashboard/messages">
-          {({ isActive }) => (
-            <div
-              className={`${
-                isActive ? "text-purple font-bold" : "text-black font-normal"
-              } text-lg flex flex-row items-center gap-3 mt-4 py-3`}
-            >
-              <Sms
-                size="22"
-                variant="Bold"
-                color={isActive ? "rgba(110,98,229,1)" : "rgba(41,45,50,1)"}
-              />{" "}
-              <p
-                className={`${
-                  isActive ? "text-purple font-bold" : "text-black font-normal"
-                } text-lg`}
-              >
-                Messages
               </p>
             </div>
           )}

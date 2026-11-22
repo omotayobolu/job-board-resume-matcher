@@ -29,6 +29,23 @@ CREATE TABLE IF NOT EXISTS public.users (
   hasprofile boolean DEFAULT false
 );
 
+CREATE TABLE IF NOT EXISTS public.workspaces (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name text NOT NULL,
+  created_at timestamp without time zone DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.workspace_members (
+  workspace_id uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  user_id uuid NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  member_role text NOT NULL CHECK (member_role IN ('owner', 'admin', 'recruiter')),
+  created_at timestamp without time zone DEFAULT now(),
+  PRIMARY KEY (workspace_id, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS workspace_members_user_id_idx
+  ON public.workspace_members (user_id);
+
 CREATE TABLE IF NOT EXISTS public.recruiter (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid REFERENCES public.users(id) ON DELETE CASCADE,
@@ -66,6 +83,7 @@ CREATE TABLE IF NOT EXISTS public.jobs (
   created_at timestamp without time zone,
   work_type varchar(10),
   summary text,
+  workspace_id uuid REFERENCES public.workspaces(id) ON DELETE SET NULL,
   embedding_status text NOT NULL DEFAULT 'pending'
     CHECK (embedding_status IN ('pending', 'processing', 'completed', 'failed')),
   embedding_job_id uuid,
@@ -87,8 +105,68 @@ CREATE UNIQUE INDEX IF NOT EXISTS applications_job_seeker_id_job_id_idx
 CREATE INDEX IF NOT EXISTS applications_job_id_idx
   ON public.applications (job_id);
 
+CREATE INDEX IF NOT EXISTS jobs_workspace_id_idx
+  ON public.jobs (workspace_id);
+
 CREATE INDEX IF NOT EXISTS jobs_embedding_hnsw_idx
   ON public.jobs USING hnsw (embedding vector_cosine_ops);
+
+CREATE TABLE IF NOT EXISTS public.candidates (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  full_name text,
+  email text,
+  phone text,
+  resume_s3_key text,
+  resume_filename text,
+  file_sha256 text,
+  parsed_resume jsonb,
+  embedding vector(768),
+  processing_status text NOT NULL DEFAULT 'pending'
+    CHECK (processing_status IN ('pending', 'processing', 'completed', 'failed')),
+  processing_token uuid,
+  processing_job_id uuid,
+  created_at timestamp without time zone DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS candidates_workspace_file_sha256_idx
+  ON public.candidates (workspace_id, file_sha256)
+  WHERE file_sha256 IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS candidates_embedding_hnsw_idx
+  ON public.candidates USING hnsw (embedding vector_cosine_ops);
+
+CREATE TABLE IF NOT EXISTS public.upload_batches (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  job_id uuid NOT NULL REFERENCES public.jobs(id) ON DELETE CASCADE,
+  uploaded_by uuid REFERENCES public.users(id) ON DELETE SET NULL,
+  status text NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending', 'processing', 'completed', 'failed')),
+  total_files integer NOT NULL DEFAULT 0,
+  processed_files integer NOT NULL DEFAULT 0,
+  failed_files integer NOT NULL DEFAULT 0,
+  skipped_files integer NOT NULL DEFAULT 0,
+  created_at timestamp without time zone DEFAULT now(),
+  completed_at timestamp without time zone
+);
+
+CREATE TABLE IF NOT EXISTS public.screenings (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  job_id uuid NOT NULL REFERENCES public.jobs(id) ON DELETE CASCADE,
+  candidate_id uuid NOT NULL REFERENCES public.candidates(id) ON DELETE CASCADE,
+  batch_id uuid REFERENCES public.upload_batches(id) ON DELETE SET NULL,
+  status text NOT NULL DEFAULT 'new'
+    CHECK (status IN ('new', 'shortlisted', 'rejected', 'hired')),
+  score double precision,
+  reason_summary text,
+  reason_strengths text[],
+  reason_gaps text[],
+  reason_status text NOT NULL DEFAULT 'pending'
+    CHECK (reason_status IN ('pending', 'processing', 'completed', 'failed')),
+  created_at timestamp without time zone DEFAULT now(),
+  UNIQUE (job_id, candidate_id)
+);
 
 CREATE TABLE IF NOT EXISTS public.notifications (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

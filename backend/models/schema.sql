@@ -192,3 +192,151 @@ TABLESPACE pg_default;
 
 ALTER TABLE IF EXISTS public.users
     OWNER to postgres;
+
+-- Workspaces, candidates, and screenings. embedding vector(768) matches jobs.embedding.
+-- See backend/models/20261122_recruiter_workspaces.sql.
+
+CREATE TABLE IF NOT EXISTS public.workspaces
+(
+    id uuid NOT NULL DEFAULT gen_random_uuid(),
+    name text COLLATE pg_catalog."default" NOT NULL,
+    created_at timestamp without time zone DEFAULT now(),
+    CONSTRAINT workspaces_pkey PRIMARY KEY (id)
+);
+
+CREATE TABLE IF NOT EXISTS public.workspace_members
+(
+    workspace_id uuid NOT NULL,
+    user_id uuid NOT NULL,
+    member_role text COLLATE pg_catalog."default" NOT NULL,
+    created_at timestamp without time zone DEFAULT now(),
+    CONSTRAINT workspace_members_pkey PRIMARY KEY (workspace_id, user_id),
+    CONSTRAINT workspace_members_member_role_check CHECK (member_role = ANY (ARRAY['owner'::text, 'admin'::text, 'recruiter'::text])),
+    CONSTRAINT workspace_members_workspace_id_fkey FOREIGN KEY (workspace_id)
+        REFERENCES public.workspaces (id) MATCH SIMPLE
+        ON UPDATE NO ACTION
+        ON DELETE CASCADE,
+    CONSTRAINT workspace_members_user_id_fkey FOREIGN KEY (user_id)
+        REFERENCES public.users (id) MATCH SIMPLE
+        ON UPDATE NO ACTION
+        ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS workspace_members_user_id_idx
+    ON public.workspace_members USING btree
+    (user_id);
+
+ALTER TABLE public.jobs
+    ADD COLUMN IF NOT EXISTS workspace_id uuid;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'jobs_workspace_id_fkey'
+      AND conrelid = 'public.jobs'::regclass
+  ) THEN
+    ALTER TABLE public.jobs
+      ADD CONSTRAINT jobs_workspace_id_fkey
+      FOREIGN KEY (workspace_id) REFERENCES public.workspaces (id)
+      ON DELETE SET NULL;
+  END IF;
+END
+$$;
+
+CREATE INDEX IF NOT EXISTS jobs_workspace_id_idx
+    ON public.jobs USING btree
+    (workspace_id);
+
+CREATE TABLE IF NOT EXISTS public.candidates
+(
+    id uuid NOT NULL DEFAULT gen_random_uuid(),
+    workspace_id uuid NOT NULL,
+    full_name text COLLATE pg_catalog."default",
+    email text COLLATE pg_catalog."default",
+    phone text COLLATE pg_catalog."default",
+    resume_s3_key text COLLATE pg_catalog."default",
+    resume_filename text COLLATE pg_catalog."default",
+    file_sha256 text COLLATE pg_catalog."default",
+    parsed_resume jsonb,
+    embedding vector(768),
+    processing_status text COLLATE pg_catalog."default" NOT NULL DEFAULT 'pending'::text,
+    processing_token uuid,
+    processing_job_id uuid,
+    created_at timestamp without time zone DEFAULT now(),
+    CONSTRAINT candidates_pkey PRIMARY KEY (id),
+    CONSTRAINT candidates_processing_status_check CHECK (processing_status = ANY (ARRAY['pending'::text, 'processing'::text, 'completed'::text, 'failed'::text])),
+    CONSTRAINT candidates_workspace_id_fkey FOREIGN KEY (workspace_id)
+        REFERENCES public.workspaces (id) MATCH SIMPLE
+        ON UPDATE NO ACTION
+        ON DELETE CASCADE
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS candidates_workspace_file_sha256_idx
+    ON public.candidates USING btree
+    (workspace_id, file_sha256)
+    WHERE file_sha256 IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS candidates_embedding_hnsw_idx
+    ON public.candidates USING hnsw
+    (embedding vector_cosine_ops);
+
+CREATE TABLE IF NOT EXISTS public.upload_batches
+(
+    id uuid NOT NULL DEFAULT gen_random_uuid(),
+    workspace_id uuid NOT NULL,
+    job_id uuid NOT NULL,
+    uploaded_by uuid,
+    status text COLLATE pg_catalog."default" NOT NULL DEFAULT 'pending'::text,
+    total_files integer NOT NULL DEFAULT 0,
+    processed_files integer NOT NULL DEFAULT 0,
+    failed_files integer NOT NULL DEFAULT 0,
+    skipped_files integer NOT NULL DEFAULT 0,
+    created_at timestamp without time zone DEFAULT now(),
+    completed_at timestamp without time zone,
+    CONSTRAINT upload_batches_pkey PRIMARY KEY (id),
+    CONSTRAINT upload_batches_status_check CHECK (status = ANY (ARRAY['pending'::text, 'processing'::text, 'completed'::text, 'failed'::text])),
+    CONSTRAINT upload_batches_workspace_id_fkey FOREIGN KEY (workspace_id)
+        REFERENCES public.workspaces (id) MATCH SIMPLE
+        ON UPDATE NO ACTION
+        ON DELETE CASCADE,
+    CONSTRAINT upload_batches_job_id_fkey FOREIGN KEY (job_id)
+        REFERENCES public.jobs (id) MATCH SIMPLE
+        ON UPDATE NO ACTION
+        ON DELETE CASCADE,
+    CONSTRAINT upload_batches_uploaded_by_fkey FOREIGN KEY (uploaded_by)
+        REFERENCES public.users (id) MATCH SIMPLE
+        ON UPDATE NO ACTION
+        ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS public.screenings
+(
+    id uuid NOT NULL DEFAULT gen_random_uuid(),
+    job_id uuid NOT NULL,
+    candidate_id uuid NOT NULL,
+    batch_id uuid,
+    status text COLLATE pg_catalog."default" NOT NULL DEFAULT 'new'::text,
+    score double precision,
+    reason_summary text COLLATE pg_catalog."default",
+    reason_strengths text[] COLLATE pg_catalog."default",
+    reason_gaps text[] COLLATE pg_catalog."default",
+    reason_status text COLLATE pg_catalog."default" NOT NULL DEFAULT 'pending'::text,
+    created_at timestamp without time zone DEFAULT now(),
+    CONSTRAINT screenings_pkey PRIMARY KEY (id),
+    CONSTRAINT screenings_job_id_candidate_id_key UNIQUE (job_id, candidate_id),
+    CONSTRAINT screenings_status_check CHECK (status = ANY (ARRAY['new'::text, 'shortlisted'::text, 'rejected'::text, 'hired'::text])),
+    CONSTRAINT screenings_reason_status_check CHECK (reason_status = ANY (ARRAY['pending'::text, 'processing'::text, 'completed'::text, 'failed'::text])),
+    CONSTRAINT screenings_job_id_fkey FOREIGN KEY (job_id)
+        REFERENCES public.jobs (id) MATCH SIMPLE
+        ON UPDATE NO ACTION
+        ON DELETE CASCADE,
+    CONSTRAINT screenings_candidate_id_fkey FOREIGN KEY (candidate_id)
+        REFERENCES public.candidates (id) MATCH SIMPLE
+        ON UPDATE NO ACTION
+        ON DELETE CASCADE,
+    CONSTRAINT screenings_batch_id_fkey FOREIGN KEY (batch_id)
+        REFERENCES public.upload_batches (id) MATCH SIMPLE
+        ON UPDATE NO ACTION
+        ON DELETE SET NULL
+);
