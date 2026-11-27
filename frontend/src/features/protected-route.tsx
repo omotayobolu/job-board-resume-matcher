@@ -1,4 +1,5 @@
 import Loading from "@/components/loading";
+import { isApiUnreachable } from "@/lib/api-error";
 import { getHomePath } from "@/lib/auth";
 import { axiosInstance } from "@/lib/axios-instance";
 import { clearUser, selectUser, setUser } from "@/store/userSlice";
@@ -14,6 +15,7 @@ const ProtectedRoute = () => {
   const dispatch = useDispatch();
   const user = useSelector(selectUser);
   const [loading, setLoading] = useState(true);
+  const [apiUnreachable, setApiUnreachable] = useState(false);
 
   useEffect(() => {
     axiosInstance
@@ -24,6 +26,7 @@ const ProtectedRoute = () => {
       .catch((error) => {
         console.error("Error during authentication check:", error);
         dispatch(clearUser());
+        if (isApiUnreachable(error)) setApiUnreachable(true);
       })
       .finally(() => setLoading(false));
   }, [dispatch]);
@@ -33,7 +36,13 @@ const ProtectedRoute = () => {
   }
 
   if (!user?.id) {
-    return <Navigate to="/login" />;
+    return (
+      <Navigate
+        to="/login"
+        replace
+        state={apiUnreachable ? { apiUnreachable: true } : undefined}
+      />
+    );
   }
 
   // Onboarding: no role -> login, role without a profile -> that profile form,

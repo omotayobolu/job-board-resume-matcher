@@ -11,6 +11,13 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
  * Turns a failed request into a message that is safe to show a user.
  * Handles the backend's `{ error }` and `{ error, details: [{ message }] }` shapes.
  */
+/** No HTTP response: DNS, connection, CORS, or the client timeout. Server 5xx counts too. */
+export function isApiUnreachable(error: unknown): boolean {
+  if (!axios.isAxiosError(error)) return false;
+  if (!error.response) return true;
+  return error.response.status >= 500;
+}
+
 export function getApiErrorMessage(
   error: unknown,
   fallback: string = DEFAULT_MESSAGE

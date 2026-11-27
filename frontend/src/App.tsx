@@ -3,7 +3,7 @@ import { Navigate, Route, Routes } from "react-router";
 import SignIn from "./features/sign-in";
 import SignUp from "./features/sign-up";
 import Dashboard from "./features/dashboard";
-import Redirect from "./features/redirect";
+import Home from "./features/home";
 import ProtectedRoute from "./features/protected-route";
 import RecruiterProfile from "./features/create-recruiters-profile";
 import JobseekerProfile from "./features/create-jobseeker-profile";
@@ -12,44 +12,48 @@ import Messages from "./features/messages";
 import JobApplicants from "./features/applicants";
 import NewScreening from "./features/new-screening";
 import JobSeekerProfilePage from "./features/jobseeker-profile";
+import { ApiConfigBanner } from "./components/api-config-banner";
 
 function App() {
   return (
-    <Routes>
-      <Route path="/" element={<Redirect />} />
-      <Route path="login" element={<SignIn />} />
-      <Route path="signup" element={<SignUp />} />
-      <Route element={<ProtectedRoute />}>
-        <Route path="recruiter-profile" element={<RecruiterProfile />} />
-        <Route
-          path="jobseeker-profile"
-          element={
-            jobSeekerFeaturesEnabled() ? (
-              <JobseekerProfile />
-            ) : (
-              <Navigate to="/dashboard" replace />
-            )
-          }
-        />
-        <Route path="dashboard" element={<DashboardLayout />}>
-          <Route index element={<Dashboard />} />
+    <>
+      <ApiConfigBanner />
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="login" element={<SignIn />} />
+        <Route path="signup" element={<SignUp />} />
+        <Route element={<ProtectedRoute />}>
+          <Route path="recruiter-profile" element={<RecruiterProfile />} />
           <Route
-            path="profile"
+            path="jobseeker-profile"
             element={
               jobSeekerFeaturesEnabled() ? (
-                <JobSeekerProfilePage />
+                <JobseekerProfile />
               ) : (
                 <Navigate to="/dashboard" replace />
               )
             }
           />
-          <Route path="applicants/:jobId" element={<JobApplicants />} />
-          <Route path="screenings/new" element={<NewScreening />} />
-          <Route path="messages/" element={<Messages />} />
-          <Route path="messages/:userId" element={<Messages />} />
+          <Route path="dashboard" element={<DashboardLayout />}>
+            <Route index element={<Dashboard />} />
+            <Route
+              path="profile"
+              element={
+                jobSeekerFeaturesEnabled() ? (
+                  <JobSeekerProfilePage />
+                ) : (
+                  <Navigate to="/dashboard" replace />
+                )
+              }
+            />
+            <Route path="applicants/:jobId" element={<JobApplicants />} />
+            <Route path="screenings/new" element={<NewScreening />} />
+            <Route path="messages/" element={<Messages />} />
+            <Route path="messages/:userId" element={<Messages />} />
+          </Route>
         </Route>
-      </Route>
-    </Routes>
+      </Routes>
+    </>
   );
 }
 

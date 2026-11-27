@@ -1,4 +1,4 @@
-import BrandLogo from "@/components/brand-logo";
+import { Logo } from "@/components/logo";
 import CountrySelect from "@/components/country-select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -77,7 +77,7 @@ const JobseekerProfile = () => {
   return (
     <div className="w-full min-h-screen flex flex-col bg-light-grey font-sf-pro">
       <header className="px-6 sm:px-12 py-5">
-        <BrandLogo />
+        <Logo />
       </header>
       <div className="flex-1 flex justify-center items-center w-full px-4 py-10">
         <form

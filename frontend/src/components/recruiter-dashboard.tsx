@@ -13,6 +13,7 @@ import { useQuery } from "@tanstack/react-query";
 import { fetchRecruiterJobs } from "@/lib/jobs-api";
 import { Badge } from "./ui/badge";
 import { Link, useNavigate } from "react-router";
+import Loading from "./loading";
 
 const formatDate = (dateString: string): string => {
   if (!dateString) return "";
@@ -66,7 +67,7 @@ const RecruiterDashboard = () => {
                 {isLoading ? (
                   <TableRow>
                     <TableCell colSpan={5} className="text-center py-4">
-                      Loading...
+                      <Loading />
                     </TableCell>
                   </TableRow>
                 ) : isError ? (
