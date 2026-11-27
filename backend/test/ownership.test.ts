@@ -173,3 +173,65 @@ test("queryApplications looks up the job by the logged-in recruiter and hides ot
     global.fetch = originalFetch;
   }
 });
+
+test("queryApplications answers through OpenAI gpt-6 and forwards provider errors", async () => {
+  process.env.DATABASE_URL ??= "postgres://test:test@localhost:5432/test";
+  const [{ queryApplications }, dbModule] = await Promise.all([
+    import("../controllers/recruiterController.js"), import("../db.js"),
+  ]);
+  const pool = dbModule.default as unknown as MockablePool;
+  const originalQuery = pool.query;
+  const originalFetch = global.fetch;
+  const originalKey = process.env.OPENAI_API_KEY;
+  process.env.OPENAI_API_KEY = "test-key";
+  try {
+    pool.query = async (sql) => {
+      const text = String(sql);
+      if (text.includes("FROM users")) {
+        return { rowCount: 1, rows: [{ id: ownerId, role: "recruiter" }] };
+      }
+      if (text.includes("FROM jobs")) return { rowCount: 1, rows: [{ id: jobId }] };
+      assert.match(text, /FROM applications/);
+      return { rowCount: 1, rows: [{ name: "Ada", work_experience: [{ title: "TypeScript engineer" }] }] };
+    };
+    for (const status of [200, 429]) {
+      let completionCalls = 0;
+      global.fetch = async (url, options) => {
+        assert.equal(new Headers(options?.headers).get("Authorization"), "Bearer test-key");
+        if (String(url) === "https://api.openai.com/v1/embeddings") {
+          return new Response(JSON.stringify({ data: [{ embedding: Array(768).fill(1) }] }));
+        }
+        assert.equal(String(url), "https://api.openai.com/v1/chat/completions");
+        const body = JSON.parse(String(options?.body));
+        assert.equal(body.model, "gpt-6");
+        assert.match(body.messages[0].content, /Who knows TypeScript\?/);
+        assert.match(body.messages[0].content, /Ada/);
+        completionCalls++;
+        return new Response(JSON.stringify({ choices: [{ message: { content: "Ada knows TypeScript." } }] }), { status });
+      };
+      const res = jsonResponse();
+      let received: unknown;
+      await queryApplications(
+        { user: { id: ownerId, role: "recruiter" }, params: { jobId },
+          body: { question: "Who knows TypeScript?" } } as unknown as Request,
+        res as unknown as Response,
+        ((error: unknown) => { received = error; }) as NextFunction,
+      );
+      assert.equal(completionCalls, 1);
+      if (status === 200) {
+        assert.equal(received, undefined);
+        assert.equal(res.statusCode, 200);
+        assert.deepEqual(res.body, { answer: "Ada knows TypeScript." });
+      } else {
+        assert.ok(received instanceof Error);
+        assert.equal(received.message, "OpenAI request failed (429)");
+        assert.equal(res.statusCode, 0);
+      }
+    }
+  } finally {
+    pool.query = originalQuery;
+    global.fetch = originalFetch;
+    if (originalKey === undefined) delete process.env.OPENAI_API_KEY;
+    else process.env.OPENAI_API_KEY = originalKey;
+  }
+});

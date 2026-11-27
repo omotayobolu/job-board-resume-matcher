@@ -18,7 +18,6 @@ process.env.JWT_SECRET ??= "test-secret";
 process.env.AWS_REGION ??= "us-east-1";
 process.env.S3_BUCKET_NAME ??= "test-bucket";
 process.env.OPENAI_API_KEY ??= "test-key";
-process.env.OPENROUTER_API_KEY ??= "test-key";
 
 const modelsDir = path.join(process.cwd(), "models");
 const adaId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1";

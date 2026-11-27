@@ -94,9 +94,7 @@ test("job embedding reruns reuse the saved vector without AI and rescore applica
   const originalTransaction = pool.transaction;
   const originalFetch = global.fetch;
   const originalOpenAIKey = process.env.OPENAI_API_KEY;
-  const originalRouterKey = process.env.OPENROUTER_API_KEY;
   process.env.OPENAI_API_KEY = "test-key";
-  process.env.OPENROUTER_API_KEY = "test-key";
   let hasEmbedding = false;
   let aiCalls = 0;
   let scores = 0;
@@ -134,9 +132,13 @@ test("job embedding reruns reuse the saved vector without AI and rescore applica
       },
     } as unknown as PoolClient;
     pool.transaction = async (work) => work(client);
-    global.fetch = async (url) => {
+    global.fetch = async (url, options) => {
       aiCalls++;
-      if (String(url).includes("openrouter")) {
+      if (String(url) === "https://api.openai.com/v1/chat/completions") {
+        assert.equal(new Headers(options?.headers).get("Authorization"), "Bearer test-key");
+        const body = JSON.parse(String(options?.body));
+        assert.equal(body.model, "gpt-6");
+        assert.match(body.messages[0].content, /Build backend services/);
         return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({
           responsibilities: ["Build services"], summary: "Build useful services",
         }) } }] }), { status: 200 });
@@ -157,7 +159,5 @@ test("job embedding reruns reuse the saved vector without AI and rescore applica
     global.fetch = originalFetch;
     if (originalOpenAIKey === undefined) delete process.env.OPENAI_API_KEY;
     else process.env.OPENAI_API_KEY = originalOpenAIKey;
-    if (originalRouterKey === undefined) delete process.env.OPENROUTER_API_KEY;
-    else process.env.OPENROUTER_API_KEY = originalRouterKey;
   }
 });

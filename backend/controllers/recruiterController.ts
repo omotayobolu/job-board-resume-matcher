@@ -160,22 +160,21 @@ const queryApplications = async (req: Request, res: Response, next: NextFunction
         `;
 
     const response = await fetch(
-      "https://openrouter.ai/api/v1/chat/completions",
+      "https://api.openai.com/v1/chat/completions",
       {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${requiredEnv("OPENROUTER_API_KEY")}`,
+          Authorization: `Bearer ${requiredEnv("OPENAI_API_KEY")}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "openai/gpt-4-turbo",
+          model: "gpt-6",
           messages: [{ role: "user", content: prompt }],
-          temperature: 0.2,
         }),
       }
     );
 
-    if (!response.ok) throw new Error("OpenRouter request failed");
+    if (!response.ok) throw new Error(`OpenAI request failed (${response.status})`);
     const data: unknown = await response.json();
     const answer = completionSchema.parse(data).choices[0]!.message.content;
 

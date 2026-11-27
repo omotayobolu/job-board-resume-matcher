@@ -63,7 +63,7 @@ test("registration validates and normalizes untrusted input", () => {
   }
 });
 
-test("job and OpenRouter payloads reject wrong field types", () => {
+test("job and completion payloads reject wrong field types", () => {
   assert.equal(createJobSchema.safeParse({
     job_details: {
       job_title: "Engineer",
