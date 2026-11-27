@@ -13,6 +13,10 @@ import { jobEmbeddingQueue } from "./utils/jobEmbeddingQueue";
 import { screeningQueue } from "./utils/screeningQueue";
 
 const app = express();
+app.set("trust proxy", 1);
+app.get("/health", (_req, res) => {
+  res.status(200).json({ ok: true });
+});
 app.disable("etag");
 
 app.use((_req, res, next) => {
@@ -29,7 +33,7 @@ app.use(
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
     allowedHeaders: ["Content-Type", "Authorization"],
-  })
+  }),
 );
 app.use(cookieParser());
 app.use(morgan("dev"));
@@ -40,15 +44,17 @@ app.use(errorMiddleware);
 
 const port = process.env.PORT || 3000;
 let server: ReturnType<typeof app.listen> | undefined;
-void resumeQueue.start()
+void resumeQueue
+  .start()
   .then(() => jobEmbeddingQueue.start())
   .then(() => screeningQueue.start())
   .then(() => {
-  server = app.listen(port, () => {
-    console.log(`Server is running on port ${port}...`);
-  });
-  server.on("error", shutDownAfterFatalError);
-}).catch(shutDownAfterFatalError);
+    server = app.listen(port, () => {
+      console.log(`Server is running on port ${port}...`);
+    });
+    server.on("error", shutDownAfterFatalError);
+  })
+  .catch(shutDownAfterFatalError);
 
 let shuttingDown = false;
 function shutDownAfterFatalError(error: unknown) {
@@ -78,6 +84,6 @@ process.on("uncaughtException", shutDownAfterFatalError);
 
 process.on("unhandledRejection", (reason) => {
   shutDownAfterFatalError(
-    reason instanceof Error ? reason : new Error(String(reason))
+    reason instanceof Error ? reason : new Error(String(reason)),
   );
 });
